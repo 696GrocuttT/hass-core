@@ -23,7 +23,11 @@ def valid_type(value: Any) -> str:
     return strVal
 
 
-TRIGGER_SCHEMA = TRIGGER_BASE_SCHEMA.extend({vol.Required(CONF_TYPE): valid_type,})
+TRIGGER_SCHEMA = TRIGGER_BASE_SCHEMA.extend(
+    {
+        vol.Required(CONF_TYPE): valid_type
+    }
+)
 
 
 async def async_get_triggers(hass: HomeAssistant, device_id: str) -> List[dict]:
@@ -32,7 +36,7 @@ async def async_get_triggers(hass: HomeAssistant, device_id: str) -> List[dict]:
             CONF_PLATFORM:  CONF_DEVICE,
             CONF_DEVICE_ID: device_id,
             CONF_DOMAIN:    DOMAIN,
-            CONF_TYPE:      str(command),
+            CONF_TYPE:      str(command)
         }
 
     return map(create_trigger, knownCommands)

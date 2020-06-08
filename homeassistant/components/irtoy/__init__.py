@@ -3,26 +3,21 @@
 import asyncio
 import queue
 import logging
-import voluptuous as vol
+import voluptuous                              as vol
 import homeassistant.helpers.config_validation as cv
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.const import (
-    CONF_FILENAME,
-    CONF_NAME,
-    EVENT_HOMEASSISTANT_STOP,
-    EVENT_HOMEASSISTANT_START,
-)
-from homeassistant.helpers import device_registry as dr
-from homeassistant.loader import bind_hass
-from .const import DOMAIN
-from .irEncDec import IrEncDec
+from homeassistant.core           import HomeAssistant, callback
+from homeassistant.const          import CONF_FILENAME, CONF_NAME, EVENT_HOMEASSISTANT_STOP
+from homeassistant.helpers        import device_registry as dr
+from homeassistant.loader         import bind_hass
+from .const                       import DOMAIN
+from .irEncDec                    import IrEncDec
 
 
-DEVICES = {}
+DEVICES                = {}
 DEVICES_KEY_IR_ENC_DEC = "irEncDec"
-DEVICES_KEY_TX_QUEUE = "txQueue"
-_LOGGER = logging.getLogger(__name__)
+DEVICES_KEY_TX_QUEUE   = "txQueue"
+_LOGGER                = logging.getLogger(__name__)
 CONFIG_SCHEMA = vol.Schema(
     {DOMAIN: vol.Schema({vol.Required(CONF_FILENAME): cv.isdevice})},
     extra=vol.ALLOW_EXTRA,
@@ -48,11 +43,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         # Create the device representation in the UI
         device_registry = await dr.async_get_registry(hass)
         device = device_registry.async_get_or_create(
-            config_entry_id=entry.entry_id,
-            identifiers={(DOMAIN, port)},
-            manufacturer="Dangerous prototypes",
-            name=entry.title,
-            model="USB Infrared Toy",
+            config_entry_id = entry.entry_id,
+            identifiers     = {(DOMAIN, port)},
+            manufacturer    = "Dangerous prototypes",
+            name            = entry.title,
+            model           = "USB Infrared Toy",
         )
         # Connect up the actual interface
         txQueue  = queue.Queue()
