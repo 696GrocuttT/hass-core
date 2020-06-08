@@ -76,15 +76,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
         _LOGGER.debug("Removed device " + port)
     return ok
 
-
-async def get_ir_enc_dec(hass: HomeAssistant, device_id: str):
-    device_registry = await dr.async_get_registry(hass)
-    device = device_registry.async_get(device_id)
-    encDec = None
-    if device:
-        for identifier in device.identifiers:
-            if identifier[0] == DOMAIN:
-                port = identifier[1]
-                encDec = DEVICES[port][DEVICES_KEY_IR_ENC_DEC]
-                break
-    return encDec
