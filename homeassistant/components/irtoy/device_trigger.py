@@ -2,21 +2,15 @@
 
 import voluptuous as vol
 import logging
-from typing import List, Any
 import homeassistant.components.automation.event as event
-from homeassistant.components.device_automation import TRIGGER_BASE_SCHEMA
-from homeassistant.const import (
-    CONF_DEVICE_ID,
-    CONF_DOMAIN,
-    CONF_PLATFORM,
-    CONF_TYPE,
-    CONF_DEVICE,
-)
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import config_validation as cv
-from . import get_ir_enc_dec
-from .const import DOMAIN, CONF_IRTOY_EVENT, CONF_IRTOY_EVENT_CMD
-from .irEncDec import knownCommands
+from homeassistant.components.device_automation  import TRIGGER_BASE_SCHEMA
+from homeassistant.const                         import CONF_DEVICE_ID, CONF_DOMAIN, CONF_PLATFORM, CONF_TYPE, CONF_DEVICE
+from homeassistant.core                          import HomeAssistant, callback
+from homeassistant.helpers                       import config_validation as cv
+from typing                                      import List, Any
+from .                                           import get_ir_enc_dec
+from .const                                      import DOMAIN, CONF_IRTOY_EVENT, CONF_IRTOY_EVENT_CMD
+from .irEncDec                                   import knownCommands
 
 
 _LOGGER = logging.getLogger(__name__)
