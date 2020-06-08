@@ -1,14 +1,13 @@
 """Provides device automations for irtoy."""
 
-import voluptuous as vol
 import logging
+import voluptuous                                as vol
 import homeassistant.components.automation.event as event
 from homeassistant.components.device_automation  import TRIGGER_BASE_SCHEMA
 from homeassistant.const                         import CONF_DEVICE_ID, CONF_DOMAIN, CONF_PLATFORM, CONF_TYPE, CONF_DEVICE
 from homeassistant.core                          import HomeAssistant, callback
 from homeassistant.helpers                       import config_validation as cv
 from typing                                      import List, Any
-from .                                           import get_ir_enc_dec
 from .const                                      import DOMAIN, CONF_IRTOY_EVENT, CONF_IRTOY_EVENT_CMD
 from .irEncDec                                   import knownCommands
 
@@ -23,11 +22,7 @@ def valid_type(value: Any) -> str:
     return strVal
 
 
-TRIGGER_SCHEMA = TRIGGER_BASE_SCHEMA.extend(
-    {
-        vol.Required(CONF_TYPE): valid_type
-    }
-)
+TRIGGER_SCHEMA = TRIGGER_BASE_SCHEMA.extend({vol.Required(CONF_TYPE): valid_type,})
 
 
 async def async_get_triggers(hass: HomeAssistant, device_id: str) -> List[dict]:
