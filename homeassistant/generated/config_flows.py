@@ -134,6 +134,7 @@ FLOWS = [
     "somfy",
     "songpal",
     "sonos",
+    "sonyamp",
     "spotify",
     "starline",
     "synology_dsm",

@@ -1,0 +1,14 @@
+{
+  "domain": "sonyamp",
+  "name": "sonyamp",
+  "config_flow": true,
+  "documentation": "https://www.home-assistant.io/integrations/sonyamp",
+  "requirements": [],
+  "ssdp": [],
+  "zeroconf": [],
+  "homekit": {},
+  "dependencies": [],
+  "codeowners": [
+    "@696GrocuttT"
+  ]
+}
