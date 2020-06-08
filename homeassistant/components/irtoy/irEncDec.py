@@ -8,7 +8,9 @@ import threading
 import binascii
 import argparse
 import logging
-from .const import CONF_IRTOY_EVENT 
+from .const              import CONF_IRTOY_EVENT, CONF_IRTOY_EVENT_CMD
+from homeassistant.const import CONF_DEVICE_ID
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -243,18 +245,7 @@ class IrEncDec(threading.Thread):
     rawCandidateCmds = []
     idleCount        = 0
     prevRxCmd        = IrCmd()
-    triggers         = {}
     irToy            = None
-
-
-    def addTrigger(self, name, cmd, action):
-        if not cmd in self.triggers:
-            self.triggers[cmd] = {}
-        self.triggers[cmd][name] = action
-
-
-    def removeTrigger(self, name, cmd):
-        del self.triggers[cmd][name]
 
 
     def processCommand(self, type, data, width):
@@ -266,19 +257,8 @@ class IrEncDec(threading.Thread):
             if matchingCommands:
                 cmd.name = matchingCommands[0].name
             _LOGGER.info("RX: " + str(cmd))
-            self.irRxCmdQueue.put(cmd)
-            # Trigger any registered actions for this command
-            if cmd in self.triggers:
-                for name in self.triggers[cmd]:
-                    action = self.triggers[cmd][name]
-                    print(action)
-                    action()
-            #
-   
-            data = { "subtype": str(cmd)
-            }
-
-            self.hass.bus.async_fire(CONF_IRTOY_EVENT, data)
+            self.hass.bus.async_fire(CONF_IRTOY_EVENT, {CONF_IRTOY_EVENT_CMD: str(cmd), 
+                                                        CONF_DEVICE_ID:       self.deviceId})
                 
         self.prevRxCmd = cmd
 
@@ -512,11 +492,11 @@ class IrEncDec(threading.Thread):
         self.irToy.flushInput()
 
 
-    def __init__(self, port, hass, irRxCmdQueue, irTxCmdQueue):
+    def __init__(self, port, hass, deviceId, irTxCmdQueue):
         threading.Thread.__init__(self)
         self.port         = port
         self.hass         = hass
-        self.irRxCmdQueue = irRxCmdQueue
+        self.deviceId     = deviceId
         self.irTxCmdQueue = irTxCmdQueue
         self.running      = True
         self.start()

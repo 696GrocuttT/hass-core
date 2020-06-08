@@ -15,7 +15,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from . import get_ir_enc_dec
-from .const import DOMAIN, CONF_IRTOY_EVENT
+from .const import DOMAIN, CONF_IRTOY_EVENT, CONF_IRTOY_EVENT_CMD
 from .irEncDec import knownCommands
 
 
@@ -35,38 +35,26 @@ TRIGGER_SCHEMA = TRIGGER_BASE_SCHEMA.extend({vol.Required(CONF_TYPE): valid_type
 async def async_get_triggers(hass: HomeAssistant, device_id: str) -> List[dict]:
     def create_trigger(command):
         return {
-            CONF_PLATFORM: CONF_DEVICE,
+            CONF_PLATFORM:  CONF_DEVICE,
             CONF_DEVICE_ID: device_id,
-            CONF_DOMAIN: DOMAIN,
-            CONF_TYPE: str(command),
+            CONF_DOMAIN:    DOMAIN,
+            CONF_TYPE:      str(command),
         }
 
     return map(create_trigger, knownCommands)
 
 
 async def async_attach_trigger(hass, config, action, automation_info):
-    name = automation_info["name"]
     type = config[CONF_TYPE]
-    _LOGGER.debug('Adding trigger "' + type + '" to "' + name + '"')
-    irEncDec = await get_ir_enc_dec(hass, config[CONF_DEVICE_ID])
-    cmd = next(filter(lambda x: str(x) == type, knownCommands))
-
-    event_config = {
-        event.CONF_PLATFORM: "event",
+    _LOGGER.debug('Adding trigger "' + type + '" to "' + automation_info["name"] + '"')
+    event_config = event.TRIGGER_SCHEMA({
+        event.CONF_PLATFORM:   "event",
         event.CONF_EVENT_TYPE: CONF_IRTOY_EVENT,
-        event.CONF_EVENT_DATA: {"subtype": type},
-    }
+        event.CONF_EVENT_DATA: {CONF_IRTOY_EVENT_CMD: type,
+                                CONF_DEVICE_ID:       config[CONF_DEVICE_ID]}
+    })
 
-    event_config = event.TRIGGER_SCHEMA(event_config)
     return await event.async_attach_trigger(
         hass, event_config, action, automation_info, platform_type=CONF_DEVICE
     )
 
-
-# irEncDec.addTrigger(name, cmd, action)
-#
-# @callback
-# def unregister():
-#    _LOGGER.debug("Removing trigger \"" + type + "\" from \"" + name + "\"")
-#    irEncDec.removeTrigger(name, cmd)
-# return unregister

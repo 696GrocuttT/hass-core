@@ -21,7 +21,6 @@ from .irEncDec import IrEncDec
 
 DEVICES = {}
 DEVICES_KEY_IR_ENC_DEC = "irEncDec"
-DEVICES_KEY_RX_QUEUE = "rxQueue"
 DEVICES_KEY_TX_QUEUE = "txQueue"
 _LOGGER = logging.getLogger(__name__)
 CONFIG_SCHEMA = vol.Schema(
@@ -46,23 +45,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     port = entry.data[CONF_FILENAME]
     ok = not port in DEVICES
     if ok:
-        # Connect up the actual interface
-        rxQueue = queue.Queue()
-        txQueue = queue.Queue()
-        irEncDec = IrEncDec(port, hass, rxQueue, txQueue)
         # Create the device representation in the UI
         device_registry = await dr.async_get_registry(hass)
-        device_registry.async_get_or_create(
+        device = device_registry.async_get_or_create(
             config_entry_id=entry.entry_id,
             identifiers={(DOMAIN, port)},
             manufacturer="Dangerous prototypes",
             name=entry.title,
             model="USB Infrared Toy",
         )
+        # Connect up the actual interface
+        txQueue  = queue.Queue()
+        irEncDec = IrEncDec(port, hass, device.id, txQueue)
+        # Register the device in our local dict
         DEVICES[port] = {
             DEVICES_KEY_IR_ENC_DEC: irEncDec,
-            DEVICES_KEY_RX_QUEUE: rxQueue,
-            DEVICES_KEY_TX_QUEUE: txQueue,
+            DEVICES_KEY_TX_QUEUE:   txQueue,
         }
         _LOGGER.debug("Created device " + port)
     return ok
