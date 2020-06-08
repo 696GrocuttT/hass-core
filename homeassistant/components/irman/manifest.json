@@ -1,0 +1,7 @@
+{
+  "domain": "irman",
+  "name": "IRMAN remote",
+  "documentation": "https://www.home-assistant.io/integrations/irman",
+  "requirements": ["pyserial==3.4"],
+  "codeowners": []
+}

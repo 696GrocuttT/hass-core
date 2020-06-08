@@ -1,0 +1,8 @@
+{
+  "domain": "irtoy",
+  "name": "IRToy Remote",
+  "requirements": ["pyserial==3.4"],
+  "config_flow": true,
+  "documentation": "https://www.home-assistant.io/integrations/irtoy",
+  "codeowners": ["@696GrocuttT"]
+}

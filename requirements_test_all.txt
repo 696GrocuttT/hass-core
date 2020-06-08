@@ -662,6 +662,8 @@ pyps4-2ndscreen==1.0.7
 pyqwikswitch==0.93
 
 # homeassistant.components.acer_projector
+# homeassistant.components.irman
+# homeassistant.components.irtoy
 # homeassistant.components.zha
 pyserial==3.4
 

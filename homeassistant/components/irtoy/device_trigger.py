@@ -1,0 +1,72 @@
+"""Provides device automations for irtoy."""
+
+import voluptuous as vol
+import logging
+from typing import List, Any
+import homeassistant.components.automation.event as event
+from homeassistant.components.device_automation import TRIGGER_BASE_SCHEMA
+from homeassistant.const import (
+    CONF_DEVICE_ID,
+    CONF_DOMAIN,
+    CONF_PLATFORM,
+    CONF_TYPE,
+    CONF_DEVICE,
+)
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import config_validation as cv
+from . import get_ir_enc_dec
+from .const import DOMAIN, CONF_IRTOY_EVENT
+from .irEncDec import knownCommands
+
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def valid_type(value: Any) -> str:
+    strVal = cv.string(value)
+    if not strVal in map(lambda x: str(x), knownCommands):
+        raise vol.Invalid("invalid type")
+    return strVal
+
+
+TRIGGER_SCHEMA = TRIGGER_BASE_SCHEMA.extend({vol.Required(CONF_TYPE): valid_type,})
+
+
+async def async_get_triggers(hass: HomeAssistant, device_id: str) -> List[dict]:
+    def create_trigger(command):
+        return {
+            CONF_PLATFORM: CONF_DEVICE,
+            CONF_DEVICE_ID: device_id,
+            CONF_DOMAIN: DOMAIN,
+            CONF_TYPE: str(command),
+        }
+
+    return map(create_trigger, knownCommands)
+
+
+async def async_attach_trigger(hass, config, action, automation_info):
+    name = automation_info["name"]
+    type = config[CONF_TYPE]
+    _LOGGER.debug('Adding trigger "' + type + '" to "' + name + '"')
+    irEncDec = await get_ir_enc_dec(hass, config[CONF_DEVICE_ID])
+    cmd = next(filter(lambda x: str(x) == type, knownCommands))
+
+    event_config = {
+        event.CONF_PLATFORM: "event",
+        event.CONF_EVENT_TYPE: CONF_IRTOY_EVENT,
+        event.CONF_EVENT_DATA: {"subtype": type},
+    }
+
+    event_config = event.TRIGGER_SCHEMA(event_config)
+    return await event.async_attach_trigger(
+        hass, event_config, action, automation_info, platform_type=CONF_DEVICE
+    )
+
+
+# irEncDec.addTrigger(name, cmd, action)
+#
+# @callback
+# def unregister():
+#    _LOGGER.debug("Removing trigger \"" + type + "\" from \"" + name + "\"")
+#    irEncDec.removeTrigger(name, cmd)
+# return unregister

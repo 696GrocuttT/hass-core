@@ -1,0 +1,24 @@
+{
+    "config": {
+        "error": {
+            "no_dev_found": "Device not found",
+            "unknown": "An unknown error occured"
+        },
+        "step": {
+            "user": {
+                "data": {
+                    "filename": "Serial port",
+                    "name": "Device name"
+                },
+                "description": "Device information",
+                "title": "IRToy"
+            }
+        }
+    },
+    "device_automation": {
+        "trigger_type": {
+            "turned_off": "{entity_name} turned off",
+            "turned_on": "{entity_name} turned on"
+        }
+    }
+}

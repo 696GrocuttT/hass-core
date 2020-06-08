@@ -1,0 +1,32 @@
+{
+    "config": {
+        "abort": {
+            "auth_failed": "[%key:common::config_flow::error::invalid_auth%]",
+            "conn_error": "[%key:common::config_flow::error::cannot_connect%]",
+            "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]"
+        },
+        "error": {
+            "auth_failed": "[%key:common::config_flow::error::invalid_auth%]"
+        },
+        "flow_title": "Irtoy configuration",
+        "step": {
+            "user": {
+                "data": {
+                    "country_code": "Your account country code (e.g., 1 for USA or 86 for China)",
+                    "password": "[%key:common::config_flow::data::password%]",
+                    "platform": "The app where your account register",
+                    "username": "[%key:common::config_flow::data::username%]"
+                },
+                "description": "Enter your Tuya credential.",
+                "title": "Irtoy"
+            }
+        }
+    },
+    "device_automation": {
+        "trigger_type": {
+            "turned_off": "{entity_name} turned off",
+            "turned_on": "{entity_name} turned on"
+        }
+    },
+    "title": "Irtoy"
+}

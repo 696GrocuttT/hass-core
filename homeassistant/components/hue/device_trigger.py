@@ -166,5 +166,5 @@ async def async_get_triggers(hass, device_id):
                 CONF_SUBTYPE: subtype,
             }
         )
-
+    print(triggers)
     return triggers

@@ -1,0 +1,14 @@
+{
+  "domain": "tg_test",
+  "name": "tg_test",
+  "config_flow": true,
+  "documentation": "https://www.home-assistant.io/integrations/tg_test",
+  "requirements": [],
+  "ssdp": [],
+  "zeroconf": [],
+  "homekit": {},
+  "dependencies": [],
+  "codeowners": [
+    "@696GrocuttT"
+  ]
+}
