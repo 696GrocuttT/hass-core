@@ -7,22 +7,18 @@ from homeassistant.components.device_automation  import TRIGGER_BASE_SCHEMA
 from homeassistant.const                         import CONF_DEVICE_ID, CONF_DOMAIN, CONF_PLATFORM, CONF_TYPE, CONF_DEVICE
 from homeassistant.core                          import HomeAssistant, callback
 from homeassistant.helpers                       import config_validation as cv
-from typing                                      import List, Any
+from typing                                      import List
 from .const                                      import DOMAIN, CONF_IRTOY_EVENT, CONF_IRTOY_EVENT_CMD
 from .irEncDec                                   import knownCommands
+from .                                           import valid_type
 
 
-_LOGGER = logging.getLogger(__name__)
-
-
-def valid_type(value: Any) -> str:
-    strVal = cv.string(value)
-    if not strVal in map(lambda x: str(x), knownCommands):
-        raise vol.Invalid("invalid type")
-    return strVal
-
-
-TRIGGER_SCHEMA = TRIGGER_BASE_SCHEMA.extend({vol.Required(CONF_TYPE): valid_type,})
+_LOGGER        = logging.getLogger(__name__)
+TRIGGER_SCHEMA = TRIGGER_BASE_SCHEMA.extend(
+    {
+        vol.Required(CONF_TYPE): valid_type
+    }
+)
 
 
 async def async_get_triggers(hass: HomeAssistant, device_id: str) -> List[dict]:

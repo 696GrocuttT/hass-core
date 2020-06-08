@@ -493,7 +493,7 @@ class IrEncDec(threading.Thread):
 
 
     def __init__(self, port, hass, deviceId, irTxCmdQueue):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, name="IrEncDec")
         self.port         = port
         self.hass         = hass
         self.deviceId     = deviceId

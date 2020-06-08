@@ -6,13 +6,13 @@
         "description": "Device information",
         "data": {
           "name":     "Device name",
-		  "filename": "Serial port"
+          "filename": "Serial port"
         }
       }
     },
     "error": {
       "no_dev_found": "Device not found",
-	  "unknown":      "An unknown error occured"
+      "unknown":      "An unknown error occured"
     }
   }
 }

@@ -5,13 +5,14 @@ import queue
 import logging
 import voluptuous                              as vol
 import homeassistant.helpers.config_validation as cv
+from typing                       import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core           import HomeAssistant, callback
 from homeassistant.const          import CONF_FILENAME, CONF_NAME, EVENT_HOMEASSISTANT_STOP
 from homeassistant.helpers        import device_registry as dr
 from homeassistant.loader         import bind_hass
 from .const                       import DOMAIN
-from .irEncDec                    import IrEncDec
+from .irEncDec                    import IrEncDec, knownCommands
 
 
 DEVICES                = {}
@@ -71,3 +72,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
         _LOGGER.debug("Removed device " + port)
     return ok
 
+
+def valid_type(value: Any) -> str:
+    strVal = cv.string(value)
+    if not strVal in map(lambda x: str(x), knownCommands):
+        raise vol.Invalid("invalid type")
+    return strVal
