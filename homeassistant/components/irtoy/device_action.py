@@ -1,24 +1,14 @@
 """Provides device automations for IRToy Remote."""
 
 import logging
-from typing import List, Optional
-
-import voluptuous as vol
-
-from homeassistant.const import (
-    CONF_DEVICE_ID,
-    CONF_DOMAIN,
-    CONF_TYPE,
-)
-from homeassistant.core import Context, HomeAssistant
-from homeassistant.helpers import entity_registry
+import voluptuous                              as vol
 import homeassistant.helpers.config_validation as cv
-from .                                           import valid_type
-from .const import DOMAIN
-from .irEncDec                    import  knownCommands
-
-
-
+from typing              import List, Optional
+from homeassistant.const import CONF_DEVICE_ID, CONF_DOMAIN, CONF_TYPE
+from homeassistant.core  import Context, HomeAssistant
+from .                   import valid_type, async_get_ir_enc_dec
+from .const              import DOMAIN
+from .irEncDec           import  knownCommands
 
 
 _LOGGER       = logging.getLogger(__name__)
@@ -43,12 +33,13 @@ async def async_get_actions(hass: HomeAssistant, device_id: str) -> List[dict]:
 async def async_call_action_from_config(
     hass: HomeAssistant, config: dict, variables: dict, context: Optional[Context]
 ) -> None:
-    type = config[CONF_TYPE]
+    config          = ACTION_SCHEMA(config)
+    type            = config[CONF_TYPE]
     _LOGGER.debug('Performing action "' + type + '"')
+    matchingCommand = next(filter(lambda x: str(x) == type, knownCommands))
+    irEncDec        = await async_get_ir_enc_dec(hass, config[CONF_DEVICE_ID])
+    irEncDec.transmitCmd(matchingCommand)
     
-    config = ACTION_SCHEMA(config)
-    print(config)
-    print(variables)
-    print(context)
+    
     
 

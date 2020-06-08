@@ -8,8 +8,6 @@ import threading
 import binascii
 import argparse
 import logging
-from .const              import CONF_IRTOY_EVENT, CONF_IRTOY_EVENT_CMD
-from homeassistant.const import CONF_DEVICE_ID
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -257,8 +255,7 @@ class IrEncDec(threading.Thread):
             if matchingCommands:
                 cmd.name = matchingCommands[0].name
             _LOGGER.info("RX: " + str(cmd))
-            self.hass.bus.async_fire(CONF_IRTOY_EVENT, {CONF_IRTOY_EVENT_CMD: str(cmd), 
-                                                        CONF_DEVICE_ID:       self.deviceId})
+            self.recieveCmd(cmd)
                 
         self.prevRxCmd = cmd
 
@@ -492,12 +489,11 @@ class IrEncDec(threading.Thread):
         self.irToy.flushInput()
 
 
-    def __init__(self, port, hass, deviceId, irTxCmdQueue):
+    def __init__(self, port, recieveCmd):
         threading.Thread.__init__(self, name="IrEncDec")
         self.port         = port
-        self.hass         = hass
-        self.deviceId     = deviceId
-        self.irTxCmdQueue = irTxCmdQueue
+        self.recieveCmd   = recieveCmd
+        self.irTxCmdQueue = queue.Queue()
         self.running      = True
         self.start()
 
@@ -543,6 +539,10 @@ class IrEncDec(threading.Thread):
         return 
         
  
+    def transmitCmd(self, cmd):
+        self.irTxCmdQueue.put(cmd)
+ 
+ 
     def close(self):
         self.running = False
 
@@ -552,8 +552,8 @@ class IrEncDec(threading.Thread):
 if __name__ == "__main__":
     # get the args 
     parser = argparse.ArgumentParser(description='IR code transmitter')
-    parser.add_argument('-t', '--type', dest='type', action='store', default='0',
-                        type=int, help='The IR protocol type')
+    parser.add_argument('-t', '--type', dest='type', action='store', default='Sony',
+                        type=str, help='The IR protocol type')
     parser.add_argument('-c', '--cmd', dest='data', action='store', default='0',
                         type=int, help='The IR command to send')
     parser.add_argument('-w', '--width', dest='width', action='store', default='0',
@@ -565,13 +565,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # create the queues we use to connect the different threads
-    rxCmdQueue   = queue.Queue()
-    irTxCmdQueue = queue.Queue()
-        
+    rxCmdQueue = queue.Queue()
     # new create the components
-    irEncDec = IrEncDec(args.irToyPort, rxCmdQueue, irTxCmdQueue)
+    def recievedCmd(cmd):
+        rxCmdQueue.put(cmd)
+    irEncDec = IrEncDec(args.irToyPort, recievedCmd)
     if args.width > 0:
-        irTxCmdQueue.put(IrCmd(args.type, args.data, args.width))
+        irEncDec.transmitCmd(IrCmd(args.type, args.data, args.width))
 
     # should we try and recieve a command
     if args.listen:
