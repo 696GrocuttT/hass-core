@@ -405,7 +405,6 @@ homeassistant/components/tellduslive/* @fredrike
 homeassistant/components/template/* @PhracturedBlue @tetienne
 homeassistant/components/tesla/* @zabuldon @alandtse
 homeassistant/components/tfiac/* @fredrike @mellado
-homeassistant/components/tg_test/* @696GrocuttT
 homeassistant/components/thethingsnetwork/* @fabaff
 homeassistant/components/threshold/* @fabaff
 homeassistant/components/tibber/* @danielhiversen

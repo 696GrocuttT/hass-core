@@ -140,7 +140,6 @@ FLOWS = [
     "tado",
     "tellduslive",
     "tesla",
-    "tg_test",
     "tibber",
     "toon",
     "totalconnect",
