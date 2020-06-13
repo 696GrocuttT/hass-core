@@ -5,6 +5,7 @@ import time
 import queue
 import threading
 import argparse
+import signal
 
 # General constants
 RETRY_LIMIT             = 5
@@ -107,6 +108,7 @@ class AmpCmd:
         data = [SYSTEM_ADDR_SPACE, addr >> 8, addr & 0xff, size]
         return AmpCmd(PDC_AMP, MEM_READ, data)
 
+
     @staticmethod
     def genCrc(data):
         checkSum = len(data)
@@ -164,7 +166,14 @@ class AmpCmd:
 
 
     def __hash__(self):
-        return hash((self.pdc, self.cmd, tuple(self.value), tuple(self.expResp), self.zone))
+        if self.value == None:
+            value = ()
+        else:
+            value = tuple(self.value)
+        body = (self.pdc, self.cmd, value, tuple(self.expResp))
+        if self.zone != None:
+            body = (body, self.zone)
+        return hash(body)
 
 
     def __str__(self):
@@ -222,7 +231,7 @@ class AmpCtrl(threading.Thread):
         return (256 - checkSum) & 0xFF
 
 
-    def sendCmd(self, cmd):
+    def rawSendCmd(self, cmd):
         expectedResp = cmd.expResp        
         cmdData      = cmd.data()
         if self.verbose:
@@ -251,13 +260,13 @@ class AmpCtrl(threading.Thread):
                 self.amp.flushInput()
 
 
-    def recieveData(self, txCmd):
+    def recieveCmd(self, txCmd):
         # keep trying to write out the command until we get the expected
         # responce
         rxCmd = None
         for i in range(RETRY_LIMIT):
             # request the status from the amp, then read the responce
-            self.sendCmd(txCmd)
+            self.rawSendCmd(txCmd)
             # read in the header
             resp   = self.amp.read(2)
             ok     = len(resp) == 2
@@ -284,62 +293,63 @@ class AmpCtrl(threading.Thread):
    
 
     def pollStatus(self):
-        # get the data for all zones
-        for curZone in range(0, NUM_ZONES):
-            txCmd = AmpCmd(PDC_AMP, STATUS_REQ, zone=curZone)
-            rxCmd = self.recieveData(txCmd)
-            fix_me
-            if (len(data) == 7) and (data[2] == curZone):
-                # Do we have valid data to compare against
-                newPwr = data[5] & 1
-                if self.statusDataValid[curZone]:
-                    prevPwr = self.prevStatData[curZone][5] & 1
-                    sendCmd = newPwr != prevPwr
-                else:
-                    sendCmd = True
-                if sendCmd:
-                    cmd = AmpCmd(PDC_AMP, PWR_CTRL_CMD, [newPwr], [OK_RESP], curZone)
-                    self.rxCmdQueue.put(cmd)
+        updatedCmds = []
+        for pollCmd in self.pollResponces:
+            rxCmd = self.recieveCmd(pollCmd)
+            if rxCmd != self.pollResponces[pollCmd]:
+                self.pollResponces[pollCmd] = rxCmd
+                updatedCmds.append(rxCmd)                
+        return updatedCmds
+            
 
-                self.prevStatData[curZone]    = data
-                self.statusDataValid[curZone] = True
-
-
-    def __init__(self, verbose, port, rxCmdQueue, txCmdQueue, run=True):
+    def __init__(self, verbose, port, pollCmds, rxHandler, run=True):
         threading.Thread.__init__(self)
         self.verbose         = verbose
         self.port            = port
-        self.rxCmdQueue      = rxCmdQueue
-        self.txCmdQueue      = txCmdQueue
-        self.running         = True
-        self.statusDataValid = []
-        self.prevStatData    = []
+        self.rxHandler       = rxHandler
+        self.txCmdQueue      = queue.Queue()
+        self.stopRequested   = False
         self.amp             = serial.Serial(port=self.port, timeout=1, baudrate=9600)
-        for curZone in range(0, NUM_ZONES):
-            self.prevStatData.append([])
-            self.statusDataValid.append(False)
+        self.pollResponces   = {}
+        for pollCmd in pollCmds:
+            self.pollResponces[pollCmd] = None
         if run:
             self.start()
 
 
+    def transmitCmd(self, cmd):
+        self.txCmdQueue.put(cmd)
+ 
+
     def run(self):
-        while self.running:
+        while not self.stopRequested:
             if not self.txCmdQueue.empty():
                 cmd = self.txCmdQueue.get()
-                self.sendCmd(cmd)
+                self.rawSendCmd(cmd)
             else:
                 time.sleep(IDLE_DELAY);
-            self.pollStatus()
+            stateUpdates = self.pollStatus()
+            if stateUpdates:
+                self.rxHandler(stateUpdates)
 
         self.amp.close()
 
 
     def close(self):
-        self.running = False
+        if self.is_alive():
+            self.stopRequested = True
+        else:
+            # Not running, so clase serial connection directly
+            self.amp.close()
 
 
 
 ################################################################################
+def signalHandler(signal, frame):
+    print('\nCTRL-C recieved. Closing program. Waiting for worker theards to end.')
+    amp.close()
+
+    
 if __name__ == "__main__":
     # get the args
     def autoInt(x):
@@ -359,15 +369,21 @@ if __name__ == "__main__":
                         type=autoInt, help='The register command to read or write from.')
     parser.add_argument('-z', '--zone', action='store', default=None,
                         type=autoInt, help='The zone to use with a register access')
-
+    parser.add_argument('-l', '--listen', action="store_true",
+                        help='Polls for changes in state')
+    
     args = parser.parse_args()
 
     # create the queues we use to connect the different threads
-    rxCmdQueue = queue.Queue()
-    txCmdQueue = queue.Queue()
+    def rxHandler(cmds):
+        for cmd in cmds:
+            print(cmd)
 
     # new create the components
-    amp = AmpCtrl(True, args.port, rxCmdQueue, txCmdQueue, False)
+    pollCmds = [AmpCmd(PDC_AMP, STATUS_REQ, zone=0), 
+                AmpCmd(PDC_AMP, STATUS_REQ, zone=1), 
+                AmpCmd(PDC_AMP, STATUS_REQ, zone=2)]
+    amp = AmpCtrl(True, args.port, pollCmds, rxHandler, False)
 
     def printMemData(cmd):
         # remove the header from the data
@@ -380,21 +396,19 @@ if __name__ == "__main__":
     if args.pdc >= 0 and args.cmd >= 0:
         if args.val >= 0:
             cmd = AmpCmd(args.pdc, args.cmd, [args.val], [OK_RESP], args.zone)
-            amp.sendCmd(cmd)
+            amp.rawSendCmd(cmd)
         else:
             cmd  = AmpCmd(args.pdc, args.cmd, zone=args.zone)
-            data = amp.recieveData(cmd)            
-            print(data)
+            print(amp.recieveCmd(cmd))
 
     # is there a memory access to perform
     if args.addr >= 0:
         if args.val >= 0:
             cmd = AmpCmd.AmpMemWriteCmd(args.addr, [args.val])
-            amp.sendCmd(cmd)
+            amp.rawSendCmd(cmd)
         else:
-            cmd  = AmpCmd.AmpMemReadCmd(args.addr, 1)
-            data = amp.recieveData(cmd)
-            printMemData(data)
+            cmd = AmpCmd.AmpMemReadCmd(args.addr, 1)
+            printMemData(amp.recieveCmd(cmd))
 
     # Dump the amp control memory
     amp.verbose = False
@@ -402,7 +416,13 @@ if __name__ == "__main__":
     if args.dump:
         for addr in range(0, 3584, size):
             cmd  = AmpCmd.AmpMemReadCmd(addr, size)
-            data = amp.recieveData(cmd)
-            printMemData(data)
+            printMemData(amp.recieveCmd(cmd))
 
-    amp.close()
+    # should we poll for status changes
+    if args.listen:
+        signal.signal(signal.SIGINT, signalHandler)
+        amp.start()
+    else:        
+        amp.close()
+        
+
