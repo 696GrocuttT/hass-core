@@ -295,21 +295,23 @@ class AmpCtrl(threading.Thread):
 ################################################################################
 if __name__ == "__main__":
     # get the args
+    def autoInt(x):
+        return int(x, 0)
     parser = argparse.ArgumentParser(description='Sony AV reciever controller')
     parser.add_argument('-P', '--port', dest='port', action='store',
                         default='/dev/ttyUSB0', help='Serial port the amp')
     parser.add_argument('-d', '--dump', action="store_true",
                         help='Dumps the internal memory values of the amp')
     parser.add_argument('-a', '--addr', action='store', default='-1',
-                        type=int, help='The memory address to read or write to')
+                        type=autoInt, help='The memory address to read or write to')
     parser.add_argument('-v', '--val', action='store', default='-1',
-                        type=int, help='The value to write to a register or to memory. If this argument is not specified the address is read from.')
+                        type=autoInt, help='The value to write to a register or to memory. If this argument is not specified the address is read from.')
     parser.add_argument('-p', '--pdc', action='store', default='-1',
-                        type=int, help='The register PDC to read or write from.')
+                        type=autoInt, help='The register PDC to read or write from.')
     parser.add_argument('-c', '--cmd', action='store', default='-1',
-                        type=int, help='The register command to read or write from.')
+                        type=autoInt, help='The register command to read or write from.')
     parser.add_argument('-z', '--zones', action='store', default=None,
-                        type=int, help='The zones to use with a register access')
+                        type=autoInt, help='The zones to use with a register access')
 
     args = parser.parse_args()
 
