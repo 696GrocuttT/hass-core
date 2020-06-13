@@ -22,6 +22,7 @@ SF_SEL_CMD_AFD_AUTO     = 0x21
 SF_SEL_CMD_ESURROUND    = 0x32
 # commands and values for the basic AMP functions. These commands require the zone to be specified
 PDC_AMP                 = 0xA0
+PDC_AMP_RESPONCE        = 0xA8
 PWR_CTRL_CMD            = 0x60
 MUTE_CMD                = 0x53
 STATUS_REQ              = 0x82
@@ -63,18 +64,92 @@ NIGHT_MODE              = 572
 
 ################################################################################
 class AmpCmd:
-    def __init__(self, pdc, cmd, value, expResp=[], zones=None):
+    zoneCommands = {PDC_AMP:          [STATUS_REQ, PWR_CTRL_CMD, MUTE_CMD, INPUT_SEL_CMD],
+                    PDC_AMP_RESPONCE: [STATUS_REQ]}
+                    
+                    
+    def __init__(self, pdc, cmd, value=None, expResp=[], zone=None):
         self.pdc     = pdc
         self.cmd     = cmd
         self.value   = value
         self.expResp = expResp
-        self.zones   = zones
+        self.zone    = zone
 
 
     @staticmethod
-    def AmpMemCmd(addr, value):
-        data = [SYSTEM_ADDR_SPACE, addr >> 8, addr & 0xff, 1, value]
+    def AmpCmdFromData(data):
+        data   = list(data)
+        length = len(data)
+        cmd    = None
+        if length > 3:
+            pdc      = data[0]
+            cmd      = data[1]    
+            bodyData = data[:length-1]
+            if AmpCmd.genCrc(bodyData) == data[length-1]:
+                # Now we have an array of numbers, we can interpret the command
+                zone = None
+                if pdc in AmpCmd.zoneCommands:
+                    if cmd in AmpCmd.zoneCommands[pdc]:
+                        zone = bodyData.pop(2)
+                cmd = AmpCmd(pdc, cmd, bodyData[2:], zone=zone)
+        return cmd
+
+
+    @staticmethod
+    def AmpMemWriteCmd(addr, value):
+        data = [SYSTEM_ADDR_SPACE, addr >> 8, addr & 0xff, len(value)]
+        data.extend(value)
         return AmpCmd(PDC_AMP, MEM_WRITE, data)
+
+
+    @staticmethod
+    def AmpMemReadCmd(addr, size):
+        data = [SYSTEM_ADDR_SPACE, addr >> 8, addr & 0xff, size]
+        return AmpCmd(PDC_AMP, MEM_READ, data)
+
+    @staticmethod
+    def genCrc(data):
+        checkSum = len(data)
+        for x in data:
+            checkSum = checkSum + x
+        return (256 - checkSum) & 0xFF
+
+
+    def data(self):
+        if self.zone == None:
+            data = [self.pdc, self.cmd]
+        else:
+            data = [self.pdc, self.cmd, self.zone]
+        if self.value:
+            data.extend(self.value)
+
+        bytes = b'\x02' + len(data).to_bytes(1, byteorder="little")
+        for x in data:
+            bytes = bytes + x.to_bytes(1, byteorder="little")
+        return bytes + AmpCmd.genCrc(data).to_bytes(1, byteorder="little")
+
+
+    def isMemRead(self):
+        return self.pdc in [PDC_AMP, PDC_AMP_RESPONCE] and self.cmd == MEM_READ
+
+
+    def isMemWrite(self):
+        return self.pdc in [PDC_AMP, PDC_AMP_RESPONCE] and self.cmd == MEM_WRITE
+
+
+    def memAddrSpace(self):
+        assert(self.isMemWrite() or self.isMemRead())
+        return self.value[0]
+
+
+    def memAddr(self):
+        assert(self.isMemWrite() or self.isMemRead())
+        return self.value[1] << 8 | self.value[2]
+
+
+    def memData(self):
+        assert(self.isMemWrite() or self.isMemRead())
+        return self.value[4:]
 
 
     def __eq__(self, other):
@@ -84,53 +159,57 @@ class AmpCmd:
                  (self.cmd     == other.cmd)     and \
                  (self.value   == other.value)   and \
                  (self.expResp == other.expResp) and \
-                 (self.zones   == other.zones)
+                 (self.zone    == other.zone)
         return eq
 
 
     def __hash__(self):
-        return hash((self.pdc, self.cmd, tuple(self.value), tuple(self.expResp), self.zones))
+        return hash((self.pdc, self.cmd, tuple(self.value), tuple(self.expResp), self.zone))
 
 
     def __str__(self):
-        return "AMP pdc: %s cmd: %s value: %s expResp: %s zones: %s" \
-               %(self.pdc, self.cmd, self.value, self.expResp, self.zones)
+        if self.isMemRead() or self.isMemWrite():
+            result = "AMP pdc: 0x{0:02X} cmd: 0x{1:02X} addr_space: 0x{2:02X} addr: 0x{3:04X} data: {4}".format( \
+                     self.pdc, self.cmd, self.memAddrSpace(), self.memAddr(), self.memData())
+        else:
+            result = "AMP pdc: 0x{0:02X} cmd: 0x{1:02X} value: {2} expResp: {3} zone: {4}".format( \
+                     self.pdc, self.cmd, self.value, self.expResp, self.zone)
+        return result
 
 
 
 ################################################################################
-cmdAmpZone1On        = AmpCmd(PDC_AMP,           PWR_CTRL_CMD,  [1],                      [OK_RESP], 1)
-cmdAmpZone1Off       = AmpCmd(PDC_AMP,           PWR_CTRL_CMD,  [0],                      [OK_RESP], 1)
-cmdAmpZone2On        = AmpCmd(PDC_AMP,           PWR_CTRL_CMD,  [1],                      [OK_RESP], 2)
-cmdAmpZone2Off       = AmpCmd(PDC_AMP,           PWR_CTRL_CMD,  [0],                      [OK_RESP], 2)
-cmdAmpZone3On        = AmpCmd(PDC_AMP,           PWR_CTRL_CMD,  [1],                      [OK_RESP], 4)
-cmdAmpZone3Off       = AmpCmd(PDC_AMP,           PWR_CTRL_CMD,  [0],                      [OK_RESP], 4)
-cmdAmpAllOff         = AmpCmd(PDC_AMP,           PWR_CTRL_CMD,  [0],                      [OK_RESP], 7)
-cmdAmpZone1MuteOff   = AmpCmd(PDC_AMP,           MUTE_CMD,      [0],                      [OK_RESP], 1)
-cmdAmpZone1SelCD     = AmpCmd(PDC_AMP,           INPUT_SEL_CMD, [INPUT_SEL_CMD_CD],       [OK_RESP], 1)
-cmdAmpZone1SelBD     = AmpCmd(PDC_AMP,           INPUT_SEL_CMD, [INPUT_SEL_CMD_BD],       [OK_RESP], 1)
-cmdAmpZone1SelTV     = AmpCmd(PDC_AMP,           INPUT_SEL_CMD, [INPUT_SEL_CMD_TV],       [OK_RESP], 1)
-cmdAmpZone1SelATv    = AmpCmd(PDC_AMP,           INPUT_SEL_CMD, [INPUT_SEL_CMD_APPLE_TV], [OK_RESP], 1)
-cmdAmpZone1SelATvHd  = AmpCmd(PDC_AMP,           INPUT_SEL_CMD, [INPUT_SEL_CMD_ATV_HDMI], [OK_RESP], 1)
-cmdAmpZone2SelATv    = AmpCmd(PDC_AMP,           INPUT_SEL_CMD, [INPUT_SEL_CMD_APPLE_TV], [OK_RESP], 2)
+cmdAmpZone1On        = AmpCmd(PDC_AMP,           PWR_CTRL_CMD,  [1],                      [OK_RESP], 0)
+cmdAmpZone1Off       = AmpCmd(PDC_AMP,           PWR_CTRL_CMD,  [0],                      [OK_RESP], 0)
+cmdAmpZone2On        = AmpCmd(PDC_AMP,           PWR_CTRL_CMD,  [1],                      [OK_RESP], 1)
+cmdAmpZone2Off       = AmpCmd(PDC_AMP,           PWR_CTRL_CMD,  [0],                      [OK_RESP], 1)
+cmdAmpZone3On        = AmpCmd(PDC_AMP,           PWR_CTRL_CMD,  [1],                      [OK_RESP], 2)
+cmdAmpZone3Off       = AmpCmd(PDC_AMP,           PWR_CTRL_CMD,  [0],                      [OK_RESP], 2)
+cmdAmpZone1MuteOff   = AmpCmd(PDC_AMP,           MUTE_CMD,      [0],                      [OK_RESP], 0)
+cmdAmpZone1SelCD     = AmpCmd(PDC_AMP,           INPUT_SEL_CMD, [INPUT_SEL_CMD_CD],       [OK_RESP], 0)
+cmdAmpZone1SelBD     = AmpCmd(PDC_AMP,           INPUT_SEL_CMD, [INPUT_SEL_CMD_BD],       [OK_RESP], 0)
+cmdAmpZone1SelTV     = AmpCmd(PDC_AMP,           INPUT_SEL_CMD, [INPUT_SEL_CMD_TV],       [OK_RESP], 0)
+cmdAmpZone1SelATv    = AmpCmd(PDC_AMP,           INPUT_SEL_CMD, [INPUT_SEL_CMD_APPLE_TV], [OK_RESP], 0)
+cmdAmpZone1SelATvHd  = AmpCmd(PDC_AMP,           INPUT_SEL_CMD, [INPUT_SEL_CMD_ATV_HDMI], [OK_RESP], 0)
+cmdAmpZone2SelATv    = AmpCmd(PDC_AMP,           INPUT_SEL_CMD, [INPUT_SEL_CMD_APPLE_TV], [OK_RESP], 1)
 cmdAmpZone12ChSt     = AmpCmd(PDC_SOUND_ADAPTOR, SF_SEL_CMD,    [SF_SEL_CMD_2CH_ST],      [OK_RESP])
 cmdAmpZone1ADirect   = AmpCmd(PDC_SOUND_ADAPTOR, SF_SEL_CMD,    [SF_SEL_CMD_A_DIRECT],    [OK_RESP])
 cmdAmpZone1AfdAuto   = AmpCmd(PDC_SOUND_ADAPTOR, SF_SEL_CMD,    [SF_SEL_CMD_AFD_AUTO],    [OK_RESP])
 cmdAmpZone1ESurround = AmpCmd(PDC_SOUND_ADAPTOR, SF_SEL_CMD,    [SF_SEL_CMD_ESURROUND],   [OK_RESP])
 cmdAmpAuxOn          = AmpCmd(PDC_AMP,           TRIG_12V_CMD,  [0,1],                    [OK_RESP])
 cmdAmpAuxOff         = AmpCmd(PDC_AMP,           TRIG_12V_CMD,  [0,0],                    [OK_RESP])
-cmdAmpGuiToggle      = AmpCmd(PDC_AMP,           GUI_SET,       [GUI_SET_GUI_TOGGLE],     [OK_RESP], 1)
-cmdAmpGuiUp          = AmpCmd(PDC_AMP,           GUI_SET,       [GUI_SET_CURSOR_UP],      [OK_RESP], 1)
-cmdAmpGuiDown        = AmpCmd(PDC_AMP,           GUI_SET,       [GUI_SET_CURSOR_DOWN],    [OK_RESP], 1)
-cmdAmpGuiLeft        = AmpCmd(PDC_AMP,           GUI_SET,       [GUI_SET_CURSOR_LEFT],    [OK_RESP], 1)
-cmdAmpGuiRight       = AmpCmd(PDC_AMP,           GUI_SET,       [GUI_SET_CURSOR_RIGHT],   [OK_RESP], 1)
-cmdAmpGuiEnter       = AmpCmd(PDC_AMP,           GUI_SET,       [GUI_SET_ENTER],          [OK_RESP], 1)
-cmdAmpSpkNone        = AmpCmd.AmpMemCmd(SPEAKER_SEL_ADDR, SPEAKER_SEL_NONE)
-cmdAmpSpkA           = AmpCmd.AmpMemCmd(SPEAKER_SEL_ADDR, SPEAKER_SEL_A)
-cmdAmpSpkB           = AmpCmd.AmpMemCmd(SPEAKER_SEL_ADDR, SPEAKER_SEL_B)
-cmdAmpSpkAB          = AmpCmd.AmpMemCmd(SPEAKER_SEL_ADDR, SPEAKER_SEL_AB)
-cmdAmpNightOff       = AmpCmd.AmpMemCmd(NIGHT_MODE, 0)
-cmdAmpNightOn        = AmpCmd.AmpMemCmd(NIGHT_MODE, 1)
+cmdAmpGuiToggle      = AmpCmd(PDC_AMP,           GUI_SET,       [GUI_SET_GUI_TOGGLE],     [OK_RESP], 0)
+cmdAmpGuiUp          = AmpCmd(PDC_AMP,           GUI_SET,       [GUI_SET_CURSOR_UP],      [OK_RESP], 0)
+cmdAmpGuiDown        = AmpCmd(PDC_AMP,           GUI_SET,       [GUI_SET_CURSOR_DOWN],    [OK_RESP], 0)
+cmdAmpGuiLeft        = AmpCmd(PDC_AMP,           GUI_SET,       [GUI_SET_CURSOR_LEFT],    [OK_RESP], 0)
+cmdAmpGuiRight       = AmpCmd(PDC_AMP,           GUI_SET,       [GUI_SET_CURSOR_RIGHT],   [OK_RESP], 0)
+cmdAmpGuiEnter       = AmpCmd(PDC_AMP,           GUI_SET,       [GUI_SET_ENTER],          [OK_RESP], 0)
+cmdAmpSpkNone        = AmpCmd.AmpMemWriteCmd(SPEAKER_SEL_ADDR, [SPEAKER_SEL_NONE])
+cmdAmpSpkA           = AmpCmd.AmpMemWriteCmd(SPEAKER_SEL_ADDR, [SPEAKER_SEL_A])
+cmdAmpSpkB           = AmpCmd.AmpMemWriteCmd(SPEAKER_SEL_ADDR, [SPEAKER_SEL_B])
+cmdAmpSpkAB          = AmpCmd.AmpMemWriteCmd(SPEAKER_SEL_ADDR, [SPEAKER_SEL_AB])
+cmdAmpNightOff       = AmpCmd.AmpMemWriteCmd(NIGHT_MODE, [0])
+cmdAmpNightOn        = AmpCmd.AmpMemWriteCmd(NIGHT_MODE, [1])
 
 
 
@@ -143,16 +222,10 @@ class AmpCtrl(threading.Thread):
         return (256 - checkSum) & 0xFF
 
 
-    def cmdGen(self, data):
-        cmd = b'\x02' + len(data).to_bytes(1, byteorder="little")
-        for x in data:
-            cmd = cmd + x.to_bytes(1, byteorder="little")
-        return cmd + self.genCrc(data).to_bytes(1, byteorder="little")
-
-
-    def sendRawCommand(self, verbose, data, expectedResp=[]):
-        cmdData = self.cmdGen(data)
-        if verbose:
+    def sendCmd(self, cmd):
+        expectedResp = cmd.expResp        
+        cmdData      = cmd.data()
+        if self.verbose:
             print(":".join("{0:x}".format(c) for c in cmdData))
         # keep trying to write out the command until we get the expected
         # responce
@@ -178,13 +251,13 @@ class AmpCtrl(threading.Thread):
                 self.amp.flushInput()
 
 
-    def recieveData(self, pdc, cmd, value):
+    def recieveData(self, txCmd):
         # keep trying to write out the command until we get the expected
         # responce
-        retData = []
+        rxCmd = None
         for i in range(RETRY_LIMIT):
             # request the status from the amp, then read the responce
-            self.sendCommand(False, pdc, cmd, value)
+            self.sendCmd(txCmd)
             # read in the header
             resp   = self.amp.read(2)
             ok     = len(resp) == 2
@@ -194,16 +267,12 @@ class AmpCtrl(threading.Thread):
             # now read in the rest of the message now that we have the length
             # from the header
             if ok:
-                resp = self.amp.read(length + 1)
-                data = []
-                for c in resp:
-                    data.append(c)
-                # get the CRC
-                ok = length == (len(data) - 1)
+                byteData = self.amp.read(length + 1)
+                ok       = length == (len(byteData) - 1)
                 if ok:
-                    retData = data[:length]
-                    ok = self.genCrc(retData) == data[length]
-
+                    rxCmd = AmpCmd.AmpCmdFromData(byteData)
+                    ok    = rxCmd != None
+                
             # if still ok break out of the retry look, otherwise wait for a bit,
             # flush the buffer and try again.
             if ok:
@@ -211,30 +280,15 @@ class AmpCtrl(threading.Thread):
             else:
                 time.sleep(CMD_FAIL_RECOVERY_TIME)
                 self.amp.flushInput()
-        return retData
-
-
-    def sendZoneCommands(self, verbose, pdc, cmd, value, zones=1, expectedResp=[]):
-        # send the commands for all requested zones
-        for zone in range(NUM_ZONES):
-            if zones & (1 << zone):
-                # calculate the command to send
-                data = [pdc, cmd, zone]
-                data.extend(value)
-                self.sendRawCommand(verbose, data, expectedResp)
-
-
-    def sendCommand(self, verbose, pdc, cmd, value, expectedResp=[]):
-        # calculate the command to send
-        data = [pdc, cmd]
-        data.extend(value)
-        self.sendRawCommand(verbose, data, expectedResp)
-
+        return rxCmd
+   
 
     def pollStatus(self):
         # get the data for all zones
         for curZone in range(0, NUM_ZONES):
-            data = self.recieveData(PDC_AMP, STATUS_REQ, [curZone])
+            txCmd = AmpCmd(PDC_AMP, STATUS_REQ, zone=curZone)
+            rxCmd = self.recieveData(txCmd)
+            fix_me
             if (len(data) == 7) and (data[2] == curZone):
                 # Do we have valid data to compare against
                 newPwr = data[5] & 1
@@ -244,7 +298,7 @@ class AmpCtrl(threading.Thread):
                 else:
                     sendCmd = True
                 if sendCmd:
-                    cmd = AmpCmd(PDC_AMP, PWR_CTRL_CMD, [newPwr], [OK_RESP], 1 << curZone)
+                    cmd = AmpCmd(PDC_AMP, PWR_CTRL_CMD, [newPwr], [OK_RESP], curZone)
                     self.rxCmdQueue.put(cmd)
 
                 self.prevStatData[curZone]    = data
@@ -266,13 +320,6 @@ class AmpCtrl(threading.Thread):
             self.statusDataValid.append(False)
         if run:
             self.start()
-
-
-    def sendCmd(self, cmd):
-        if cmd.zones == None:
-            self.sendCommand(self.verbose, cmd.pdc, cmd.cmd, cmd.value, cmd.expResp)
-        else:
-            self.sendZoneCommands(self.verbose, cmd.pdc, cmd.cmd, cmd.value, cmd.zones, cmd.expResp)
 
 
     def run(self):
@@ -310,8 +357,8 @@ if __name__ == "__main__":
                         type=autoInt, help='The register PDC to read or write from.')
     parser.add_argument('-c', '--cmd', action='store', default='-1',
                         type=autoInt, help='The register command to read or write from.')
-    parser.add_argument('-z', '--zones', action='store', default=None,
-                        type=autoInt, help='The zones to use with a register access')
+    parser.add_argument('-z', '--zone', action='store', default=None,
+                        type=autoInt, help='The zone to use with a register access')
 
     args = parser.parse_args()
 
@@ -322,38 +369,40 @@ if __name__ == "__main__":
     # new create the components
     amp = AmpCtrl(True, args.port, rxCmdQueue, txCmdQueue, False)
 
-    def printMemData(addr, data):
+    def printMemData(cmd):
         # remove the header from the data
-        data = data[6:]
+        addr = cmd.memAddr()
+        data = cmd.memData()
         for idx in range(0,len(data)):
             print("addr %d val %d" %(addr+idx,data[idx]))
 
     # if there a register access to perfrom
     if args.pdc >= 0 and args.cmd >= 0:
         if args.val >= 0:
-            cmd = AmpCmd(args.pdc, args.cmd,  [args.val], [OK_RESP], args.zones)
+            cmd = AmpCmd(args.pdc, args.cmd, [args.val], [OK_RESP], args.zone)
             amp.sendCmd(cmd)
         else:
-            data = amp.recieveData(args.pdc, args.cmd, [args.zones])
+            cmd  = AmpCmd(args.pdc, args.cmd, zone=args.zone)
+            data = amp.recieveData(cmd)            
             print(data)
 
     # is there a memory access to perform
     if args.addr >= 0:
         if args.val >= 0:
-            cmd = AmpCmd.AmpMemCmd(args.addr, args.val)
+            cmd = AmpCmd.AmpMemWriteCmd(args.addr, [args.val])
             amp.sendCmd(cmd)
         else:
-            cmd  = [SYSTEM_ADDR_SPACE, args.addr >> 8, args.addr & 0xff, 1]
-            data = amp.recieveData(PDC_AMP, MEM_READ, cmd)
-            printMemData(args.addr, data)
+            cmd  = AmpCmd.AmpMemReadCmd(args.addr, 1)
+            data = amp.recieveData(cmd)
+            printMemData(data)
 
     # Dump the amp control memory
-    size = 64
+    amp.verbose = False
+    size        = 64
     if args.dump:
-        for addr in range(0,3584,size):
-            print("\naddr %s" %addr)
-            cmd  = [SYSTEM_ADDR_SPACE, addr >> 8, addr & 0xff, size]
-            data = amp.recieveData(PDC_AMP, MEM_READ, cmd)
-            printMemData(addr, data)
+        for addr in range(0, 3584, size):
+            cmd  = AmpCmd.AmpMemReadCmd(addr, size)
+            data = amp.recieveData(cmd)
+            printMemData(data)
 
     amp.close()
