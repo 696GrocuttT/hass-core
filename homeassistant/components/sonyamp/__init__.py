@@ -72,13 +72,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     return ok
 
 
-def valid_type(value: Any) -> str:
-    strVal = cv.string(value)
-    if not strVal in map(lambda x: str(x), knownCommands):
-        raise vol.Invalid("invalid type")
-    return strVal
-
-
 async def async_get_amp(hass: HomeAssistant, device_id: str):
     device_registry = await dr.async_get_registry(hass)
     device = device_registry.async_get(device_id)

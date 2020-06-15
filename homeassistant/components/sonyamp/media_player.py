@@ -253,6 +253,17 @@ class SonyDevice(MediaPlayerEntity):
         #    attributes[ATTR_SOUND_MODE_RAW] = self._sound_mode_raw
         return attributes
 
+    # @property
+    # def device_info(self):
+        # """Return information about the device."""
+        # print("get device info called")
+        # return {
+            # "name": "aoeu",
+            # "identifiers": {(DOMAIN, self.name)},
+            # "model": self.name,
+            # "manufacturer": "Sony",
+        # }
+
     def select_source(self, source):
         selValue = self.sourceCmdDict[source]
         self.ampCtrl.transmitCmd(AmpCmd(PDC_AMP, INPUT_SEL_CMD, [selValue], [OK_RESP], self.zone))
