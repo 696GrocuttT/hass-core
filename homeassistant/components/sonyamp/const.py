@@ -1,3 +1,4 @@
 """Constants for the sonyamp integration."""
 
-DOMAIN = "sonyamp"
+DOMAIN     = "sonyamp"
+CONF_ZONES = "zones"

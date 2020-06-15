@@ -95,7 +95,7 @@ class IrCmd:
             encData = self.encodeRaw(self.data)
         else:
             encData = []
-            print('Unknown IR command type %s' %self.type)                
+            _LOGGER.error('Unknown IR command type %s' %self.type)
         return encData
 
 

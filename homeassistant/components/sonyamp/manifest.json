@@ -1,14 +1,12 @@
 {
   "domain": "sonyamp",
-  "name": "sonyamp",
+  "name": "Sony AV reciever",
   "config_flow": true,
   "documentation": "https://www.home-assistant.io/integrations/sonyamp",
-  "requirements": [],
+  "requirements": ["pyserial==3.4"],
   "ssdp": [],
   "zeroconf": [],
   "homekit": {},
   "dependencies": [],
-  "codeowners": [
-    "@696GrocuttT"
-  ]
+  "codeowners": ["@696GrocuttT"]
 }
