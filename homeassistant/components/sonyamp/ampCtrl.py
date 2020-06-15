@@ -75,12 +75,13 @@ class AmpCmd:
                     PDC_AMP_RESPONCE: [STATUS_REQ, VOL_STATUS_REQ]}
                     
                     
-    def __init__(self, pdc, cmd, value=None, expResp=[], zone=None):
-        self.pdc     = pdc
-        self.cmd     = cmd
-        self.value   = value
-        self.expResp = expResp
-        self.zone    = zone
+    def __init__(self, pdc, cmd, value=None, expResp=[], zone=None, readResult=False):
+        self.pdc        = pdc
+        self.cmd        = cmd
+        self.value      = value
+        self.expResp    = expResp
+        self.zone       = zone
+        self.readResult = readResult
 
 
     @staticmethod
@@ -276,7 +277,7 @@ class AmpCtrl(threading.Thread):
                 length = resp[1]
                 # Didn't get the header byte, so flush the buffer incase we've out of sync
                 if not ok:
-                    amp.reset_input_buffer()
+                    self.amp.reset_input_buffer()
             # now read in the rest of the message now that we have the length
             # from the header
             if ok:
@@ -321,6 +322,7 @@ class AmpCtrl(threading.Thread):
         self.txCmdQueue    = queue.Queue()
         self.stopRequested = False
         self.amp           = serial.Serial(port=self.port, timeout=1, baudrate=9600)
+        self.amp.reset_input_buffer()
         self.pollListeners = {}
         self.pollResponces = {}
         if run:
@@ -348,7 +350,12 @@ class AmpCtrl(threading.Thread):
             if not self.txCmdQueue.empty():
                 activity = True
                 cmd = self.txCmdQueue.get()
-                self.rawSendCmd(cmd, False)
+                if cmd.readResult:
+                    rxCmd = self.getResponceToCmd(cmd)
+                    if rxCmd != None:
+                        self.distributeCmdToListeners(rxCmd)
+                else:
+                    self.rawSendCmd(cmd, False)
             # Check if we've recieved any commands
             while True:    
                 rxCmd = self.recieveCmd(False)

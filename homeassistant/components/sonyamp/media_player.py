@@ -54,25 +54,7 @@ CONF_VALID_ZONES = ["Zone2", "Zone3"]
 DEFAULT_SHOW_SOURCES = False
 DEFAULT_TIMEOUT = 2
 
-KEY_DENON_CACHE = "denonavr_hosts"
 
-SUPPORT_DENON = (
-    SUPPORT_VOLUME_STEP
-    | SUPPORT_VOLUME_MUTE
-    | SUPPORT_TURN_ON
-    | SUPPORT_TURN_OFF
-    | SUPPORT_SELECT_SOURCE
-    | SUPPORT_VOLUME_SET
-)
-
-SUPPORT_MEDIA_MODES = (
-    SUPPORT_PLAY_MEDIA
-    | SUPPORT_PAUSE
-    | SUPPORT_PREVIOUS_TRACK
-    | SUPPORT_NEXT_TRACK
-    | SUPPORT_VOLUME_SET
-    | SUPPORT_PLAY
-)
 
 DENON_ZONE_SCHEMA = vol.Schema(
     {
@@ -90,8 +72,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_TIMEOUT, default=DEFAULT_TIMEOUT): cv.positive_int,
     }
 )
-
-NewHost = namedtuple("NewHost", ["host", "name"])
 
 
 
@@ -126,60 +106,6 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         devices.append(SonyDevice(amp, zone))
     async_add_entities(devices)
 
-
-
-def setup_platform(hass, config, add_entities, discovery_info=None):
-    print(config)
-    print(discovery_info)
-    """Set up the Denon platform."""
-    # Initialize list with receivers to be started
-    receivers = []
-
-    # cache = hass.data.get(KEY_DENON_CACHE)
-    # if cache is None:
-        # cache = hass.data[KEY_DENON_CACHE] = set()
-
-    # # Get config option for show_all_sources and timeout
-    # show_all_sources = config[CONF_SHOW_ALL_SOURCES]
-    # timeout = config[CONF_TIMEOUT]
-
-    # # Get config option for additional zones
-    # zones = config.get(CONF_ZONES)
-    # if zones is not None:
-        # add_zones = {}
-        # for entry in zones:
-            # add_zones[entry[CONF_ZONE]] = entry.get(CONF_NAME)
-    # else:
-        # add_zones = None
-
-    # # Start assignment of host and name
-    # new_hosts = []
-    # # 1. option: manual setting
-    # if config.get(CONF_HOST) is not None:
-        # host = config.get(CONF_HOST)
-        # name = config.get(CONF_NAME)
-        # new_hosts.append(NewHost(host=host, name=name))
-
-    
-    # for entry in new_hosts:
-        # # Check if host not in cache, append it and save for later
-        # # starting
-        # if entry.host not in cache:
-            # new_device = denonavr.DenonAVR(
-                # host=entry.host,
-                # name=entry.name,
-                # show_all_inputs=show_all_sources,
-                # timeout=timeout,
-                # add_zones=add_zones,
-            # )
-            # for new_zone in new_device.zones.values():
-                # receivers.append(DenonDevice(new_zone))
-            # cache.add(host)
-            # _LOGGER.info("Denon receiver at host %s initialized", host)
-
-    # # Add all freshly discovered receivers
-    # if receivers:
-        # add_entities(receivers)
 
 
 class SonyDevice(MediaPlayerEntity):
@@ -344,9 +270,9 @@ class SonyDevice(MediaPlayerEntity):
     def set_volume_level(self, volume):
         """Set volume level, range 0..1."""
         volume    = min(1, max(0, volume))
-        rawVolume = int((volume * 92) - 92)
+        rawVolume = int(((volume * 92) - 92) * 256)
         data      = [1, (rawVolume >> 8) & 0xFF, rawVolume & 0xFF]
-        #self.ampCtrl.transmitCmd(AmpCmd(PDC_AMP, VOL_SET, data, [OK_RESP], self.zone))
+        self.ampCtrl.transmitCmd(AmpCmd(PDC_AMP, VOL_SET, data, [OK_RESP], self.zone))
 
     def mute_volume(self, mute):
         self.ampCtrl.transmitCmd(AmpCmd(PDC_AMP, MUTE_CMD, [1 if mute else 0], [OK_RESP], self.zone))
