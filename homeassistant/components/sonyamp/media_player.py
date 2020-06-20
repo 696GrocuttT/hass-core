@@ -1,9 +1,7 @@
-
 import logging
-
-import voluptuous as vol
-
-from homeassistant.components.media_player import PLATFORM_SCHEMA, DEVICE_CLASS_SPEAKER, MediaPlayerEntity
+import voluptuous                              as vol
+import homeassistant.helpers.config_validation as cv
+from homeassistant.components.media_player       import PLATFORM_SCHEMA, DEVICE_CLASS_SPEAKER, MediaPlayerEntity
 from homeassistant.components.media_player.const import (
     SUPPORT_SELECT_SOUND_MODE,
     SUPPORT_SELECT_SOURCE,
@@ -22,14 +20,10 @@ from homeassistant.const import (
     STATE_OFF,
     STATE_ON,
 )
-import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-
-from .const import DOMAIN, CONF_ZONES
-from . import get_amp
-from .ampCtrl import *
-
-_LOGGER = logging.getLogger(__name__)
+from .const                           import DOMAIN, CONF_ZONES
+from .                                import get_amp
+from .ampCtrl                         import *
 
 
 
@@ -43,26 +37,26 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
 
 
 
+_LOGGER = logging.getLogger(__name__)
 SOURCE_DETAILS = {
-"Tuner":                 (INPUT_SEL_CMD_TUNER,    7), 
-"CD":                    (INPUT_SEL_CMD_CD,       7), 
-"MD":                    (INPUT_SEL_CMD_MD,       7), 
-"TAPE":                  (INPUT_SEL_CMD_TAPE,     7), 
-"Front AV":              (INPUT_SEL_CMD_FRONT_AV, 7),
-"PVR":                   (INPUT_SEL_CMD_PVR,      7), 
-"Apple TV (audio only)": (INPUT_SEL_CMD_APPLE_TV, 7), 
-"TV":                    (INPUT_SEL_CMD_TV,       1), 
-"BD (audio only)":       (INPUT_SEL_CMD_BD,       7), 
-"5p1":                   (INPUT_SEL_CMD_5p1_IN,   1), 
-"Apple TV (HDMI)":       (INPUT_SEL_CMD_ATV_HDMI, 1), 
-"BD (HDMI)":             (INPUT_SEL_CMD_BD_HDMI,  1), 
+    "Tuner":                 (INPUT_SEL_CMD_TUNER,    7), 
+    "CD":                    (INPUT_SEL_CMD_CD,       7), 
+    "MD":                    (INPUT_SEL_CMD_MD,       7), 
+    "TAPE":                  (INPUT_SEL_CMD_TAPE,     7), 
+    "Front AV":              (INPUT_SEL_CMD_FRONT_AV, 7),
+    "PVR":                   (INPUT_SEL_CMD_PVR,      7), 
+    "Apple TV (audio only)": (INPUT_SEL_CMD_APPLE_TV, 7), 
+    "TV":                    (INPUT_SEL_CMD_TV,       1), 
+    "BD (audio only)":       (INPUT_SEL_CMD_BD,       7), 
+    "5p1":                   (INPUT_SEL_CMD_5p1_IN,   1), 
+    "Apple TV (HDMI)":       (INPUT_SEL_CMD_ATV_HDMI, 1), 
+    "BD (HDMI)":             (INPUT_SEL_CMD_BD_HDMI,  1), 
 }
-
 SOUND_MODES = {
-"Stereo":          SF_SEL_CMD_2CH_ST,
-"Analogue direct": SF_SEL_CMD_A_DIRECT,
-"AFD Auto":        SF_SEL_CMD_AFD_AUTO,
-"E Surround":      SF_SEL_CMD_ESURROUND,
+    "Stereo":          SF_SEL_CMD_2CH_ST,
+    "Analogue direct": SF_SEL_CMD_A_DIRECT,
+    "AFD Auto":        SF_SEL_CMD_AFD_AUTO,
+    "E Surround":      SF_SEL_CMD_ESURROUND,
 }
 
 
@@ -101,7 +95,7 @@ class SonyDevice(MediaPlayerEntity):
         
         # Setup the comms with the amp
         volStatusCmd           = AmpCmd(PDC_AMP, VOL_STATUS_REQ, zone=zone)
-        pollingCmds            = [AmpCmd(PDC_AMP, STATUS_REQ,     zone=zone), 
+        pollingCmds            = [AmpCmd(PDC_AMP, STATUS_REQ, zone=zone),
                                   volStatusCmd]
         self.pwrOffInvalidCmds = [volStatusCmd]
         if zone == 0:
@@ -153,6 +147,7 @@ class SonyDevice(MediaPlayerEntity):
             async_dispatcher_connect(self.hass, DOMAIN, self.signal_handler)
         )
 
+
     def signal_handler(self, data):
         """Handle domain-specific signal by calling appropriate method."""
         # entity_ids = data[ATTR_ENTITY_ID]
@@ -174,26 +169,32 @@ class SonyDevice(MediaPlayerEntity):
         """No polling needed."""
         return False
 
+
     def update(self):
         # No polling required
         pass
 
+
     async def async_update(self):
         pass
+
 
     @property
     def name(self):
         """Return the name of the device."""
         return "Sony STR-DA3500ES (zone %d)" % self.zone
 
+
     @property
     def state(self):
         """Return the state of the device."""
         return self.curState
 
+
     @property
     def is_volume_muted(self):
         return self.muted
+
 
     @property
     def volume_level(self):
@@ -201,21 +202,26 @@ class SonyDevice(MediaPlayerEntity):
         scaledVol = (self.rawVolume + 92) / 92
         return min(1, max(0, scaledVol))
 
+
     @property
     def source(self):
         return self.curSource 
+
 
     @property
     def source_list(self):
         return [*self.sourceCmdDict]
 
+
     @property
     def sound_mode(self):
         return self.soundMode
 
+
     @property
     def sound_mode_list(self):
         return [*SOUND_MODES]
+
 
     @property
     def supported_features(self):
@@ -224,14 +230,17 @@ class SonyDevice(MediaPlayerEntity):
             features = features | SUPPORT_SELECT_SOUND_MODE | SUPPORT_VOLUME_MUTE | SUPPORT_VOLUME_SET
         return features
 
+
     @property
     def unique_id(self):
         """Return the device unique id."""
         return self.uniqueId
 
+
     @property
     def device_class(self):
         return DEVICE_CLASS_SPEAKER
+
 
     @property
     def device_state_attributes(self):
@@ -245,28 +254,34 @@ class SonyDevice(MediaPlayerEntity):
         #    attributes[ATTR_SOUND_MODE_RAW] = self._sound_mode_raw
         return attributes
 
+
     @property
     def device_info(self):
         return {
-            "name": "Sony AV reciever",
-            "identifiers": {(DOMAIN, self.ampCtrl.port)},
-            "model": "STR-DA3500ES",
+            "name":         "Sony AV reciever",
+            "identifiers":  {(DOMAIN, self.ampCtrl.port)},
+            "model":        "STR-DA3500ES",
             "manufacturer": "Sony",
         }
+
 
     def select_source(self, source):
         selValue = self.sourceCmdDict[source]
         self.ampCtrl.transmitCmd(AmpCmd(PDC_AMP, INPUT_SEL_CMD, [selValue], [OK_RESP], self.zone))
+
         
     def select_sound_mode(self, sound_mode):
         selValue = SOUND_MODES[sound_mode]
         self.ampCtrl.transmitCmd(AmpCmd(PDC_SOUND_ADAPTOR, SF_SEL_CMD, [selValue], [OK_RESP]))
+
         
     def turn_on(self):
         self.ampCtrl.transmitCmd(AmpCmd(PDC_AMP, PWR_CTRL_CMD, [1], [OK_RESP], self.zone))
+
        
     def turn_off(self):
         self.ampCtrl.transmitCmd(AmpCmd(PDC_AMP, PWR_CTRL_CMD, [0], [OK_RESP], self.zone))
+
        
     def set_volume_level(self, volume):
         """Set volume level, range 0..1."""
@@ -275,8 +290,6 @@ class SonyDevice(MediaPlayerEntity):
         data      = [1, (rawVolume >> 8) & 0xFF, rawVolume & 0xFF]
         self.ampCtrl.transmitCmd(AmpCmd(PDC_AMP, VOL_SET, data, [OK_RESP], self.zone))
 
+
     def mute_volume(self, mute):
         self.ampCtrl.transmitCmd(AmpCmd(PDC_AMP, MUTE_CMD, [1 if mute else 0], [OK_RESP], self.zone))
-        
-
-    
