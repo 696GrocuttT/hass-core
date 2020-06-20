@@ -1,7 +1,7 @@
 import logging
 import voluptuous                              as vol
 import homeassistant.helpers.config_validation as cv
-from homeassistant.components.media_player       import PLATFORM_SCHEMA, DEVICE_CLASS_SPEAKER, MediaPlayerEntity
+from homeassistant.components.media_player       import DEVICE_CLASS_SPEAKER, MediaPlayerEntity
 from homeassistant.components.media_player.const import (
     SUPPORT_SELECT_SOUND_MODE,
     SUPPORT_SELECT_SOURCE,
@@ -11,29 +11,13 @@ from homeassistant.components.media_player.const import (
     SUPPORT_VOLUME_SET,
 )
 from homeassistant.const import (
-    ATTR_ENTITY_ID,
-    CONF_HOST,
-    CONF_NAME,
     CONF_FILENAME,
-    ENTITY_MATCH_ALL,
-    ENTITY_MATCH_NONE,
     STATE_OFF,
     STATE_ON,
 )
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from .const                           import DOMAIN, CONF_ZONES
-from .                                import get_amp
-from .ampCtrl                         import *
-
-
-
-
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
-    {
-        vol.Optional(CONF_HOST): cv.string,
-        vol.Optional(CONF_NAME): cv.string
-    }
-)
+from .const   import DOMAIN, CONF_ZONES
+from .        import get_amp
+from .ampCtrl import *
 
 
 
@@ -138,30 +122,8 @@ class SonyDevice(MediaPlayerEntity):
         
         if unknown:
             _LOGGER.warn("Unknown command recieved: " + str(cmd)) 
-        self.schedule_update_ha_state()
-
-
-    async def async_added_to_hass(self):
-        """Register signal handler."""
-        self.async_on_remove(
-            async_dispatcher_connect(self.hass, DOMAIN, self.signal_handler)
-        )
-
-
-    def signal_handler(self, data):
-        """Handle domain-specific signal by calling appropriate method."""
-        # entity_ids = data[ATTR_ENTITY_ID]
-
-        # if entity_ids == ENTITY_MATCH_NONE:
-            # return
-
-        # if entity_ids == ENTITY_MATCH_ALL or self.entity_id in entity_ids:
-            # params = {
-                # key: value
-                # for key, value in data.items()
-                # if key not in ["entity_id", "method"]
-            # }
-            # getattr(self, data["method"])(**params)
+        if self.hass:
+            self.schedule_update_ha_state()
 
 
     @property
@@ -243,23 +205,10 @@ class SonyDevice(MediaPlayerEntity):
 
 
     @property
-    def device_state_attributes(self):
-        """Return device specific state attributes."""
-        attributes = {}
-        #if (
-         #   self._sound_mode_raw is not None
-          #  and self._sound_mode_support
-          #  and self._power == "ON"
-       # ):
-        #    attributes[ATTR_SOUND_MODE_RAW] = self._sound_mode_raw
-        return attributes
-
-
-    @property
     def device_info(self):
         return {
-            "name":         "Sony AV reciever",
-            "identifiers":  {(DOMAIN, self.ampCtrl.port)},
+            "name":         self.name,
+            "identifiers":  {(DOMAIN, self.uniqueId)},
             "model":        "STR-DA3500ES",
             "manufacturer": "Sony",
         }

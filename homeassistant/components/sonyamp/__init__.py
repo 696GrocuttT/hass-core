@@ -15,8 +15,9 @@ from .const                       import DOMAIN
 from .ampCtrl                     import AmpCtrl
 
 
-DEVICES = {}
-_LOGGER = logging.getLogger(__name__)
+DEVICES   = {}
+PLATFORMS = ["media_player", "switch"]
+_LOGGER   = logging.getLogger(__name__)
 CONFIG_SCHEMA = vol.Schema(
     {DOMAIN: vol.Schema({vol.Required(CONF_FILENAME): cv.isdevice})},
     extra=vol.ALLOW_EXTRA,
@@ -45,14 +46,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         DEVICES[port] = amp
         _LOGGER.debug("Created device " + port)
         
-    hass.async_create_task(
-        hass.config_entries.async_forward_entry_setup(entry, "media_player")        
-    )
+    for component in PLATFORMS:
+        hass.async_create_task(
+            hass.config_entries.async_forward_entry_setup(entry, component)
+        )        
     return ok
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
-    ok   = await hass.config_entries.async_forward_entry_unload(entry, "media_player")
+    ok = all(
+        await asyncio.gather(
+            *[
+                hass.config_entries.async_forward_entry_unload(entry, component)
+                for component in PLATFORMS
+            ]
+        )
+    )
     port = entry.data[CONF_FILENAME]
     ok   = ok and port in DEVICES
     if ok:

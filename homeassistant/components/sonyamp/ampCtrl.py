@@ -297,7 +297,6 @@ class AmpCtrl(threading.Thread):
                 if rxCmd != None:
                     break
                 else:
-                    _LOGGER.debug("            sleep " + str(txCmd))
                     time.sleep(CMD_FAIL_RECOVERY_TIME)
                     self.amp.reset_input_buffer()
         return rxCmd
@@ -307,7 +306,7 @@ class AmpCtrl(threading.Thread):
         for id in self.pollListeners:
             for pollCmd in self.pollListeners[id][1]:                
                 rxCmd = self.getResponceToCmd(pollCmd)
-                if rxCmd != None and rxCmd != self.pollResponces[id][pollCmd]:
+                if rxCmd != None and rxCmd != self.pollResponces[id].get(pollCmd):
                     self.pollResponces[id][pollCmd] = rxCmd
                     self.distributeCmdToListeners(rxCmd)
                     
