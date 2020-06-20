@@ -1,39 +1,26 @@
 
-from collections import namedtuple
 import logging
 
 import voluptuous as vol
 
-from homeassistant.components.media_player import PLATFORM_SCHEMA, MediaPlayerEntity
+from homeassistant.components.media_player import PLATFORM_SCHEMA, DEVICE_CLASS_SPEAKER, MediaPlayerEntity
 from homeassistant.components.media_player.const import (
-    MEDIA_TYPE_CHANNEL,
-    MEDIA_TYPE_MUSIC,
-    SUPPORT_NEXT_TRACK,
-    SUPPORT_PAUSE,
-    SUPPORT_PLAY,
-    SUPPORT_PLAY_MEDIA,
-    SUPPORT_PREVIOUS_TRACK,
     SUPPORT_SELECT_SOUND_MODE,
     SUPPORT_SELECT_SOURCE,
     SUPPORT_TURN_OFF,
     SUPPORT_TURN_ON,
     SUPPORT_VOLUME_MUTE,
     SUPPORT_VOLUME_SET,
-    SUPPORT_VOLUME_STEP,
 )
 from homeassistant.const import (
     ATTR_ENTITY_ID,
     CONF_HOST,
     CONF_NAME,
-    CONF_TIMEOUT,
     CONF_FILENAME,
-    CONF_ZONE,
     ENTITY_MATCH_ALL,
     ENTITY_MATCH_NONE,
     STATE_OFF,
     STATE_ON,
-    STATE_PAUSED,
-    STATE_PLAYING,
 )
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -44,32 +31,13 @@ from .ampCtrl import *
 
 _LOGGER = logging.getLogger(__name__)
 
-ATTR_SOUND_MODE_RAW = "sound_mode_raw"
-
-CONF_INVALID_ZONES_ERR = "Invalid Zone (expected Zone2 or Zone3)"
-CONF_SHOW_ALL_SOURCES = "show_all_sources"
-CONF_VALID_ZONES = ["Zone2", "Zone3"]
 
 
-DEFAULT_SHOW_SOURCES = False
-DEFAULT_TIMEOUT = 2
-
-
-
-DENON_ZONE_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_ZONE): vol.In(CONF_VALID_ZONES, CONF_INVALID_ZONES_ERR),
-        vol.Optional(CONF_NAME): cv.string,
-    }
-)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
         vol.Optional(CONF_HOST): cv.string,
-        vol.Optional(CONF_NAME): cv.string,
-        vol.Optional(CONF_SHOW_ALL_SOURCES, default=DEFAULT_SHOW_SOURCES): cv.boolean,
-        vol.Optional(CONF_ZONES): vol.All(cv.ensure_list, [DENON_ZONE_SCHEMA]),
-        vol.Optional(CONF_TIMEOUT, default=DEFAULT_TIMEOUT): cv.positive_int,
+        vol.Optional(CONF_NAME): cv.string
     }
 )
 
@@ -104,13 +72,14 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     amp     = get_amp(config_entry.data[CONF_FILENAME])
     for zone in range(config_entry.data[CONF_ZONES]):    
         devices.append(SonyDevice(amp, zone))
-    async_add_entities(devices)
+    async_add_entities(devices, True)
 
 
 
 class SonyDevice(MediaPlayerEntity):
     def __init__(self, ampCtrl, zone):
         self.ampCtrl   = ampCtrl
+        self.uniqueId  = ampCtrl.port + "_" + str(zone)
         self.zone      = zone
         self.curState  = STATE_OFF
         self.mute      = False
@@ -131,12 +100,22 @@ class SonyDevice(MediaPlayerEntity):
             self.soundModeNameDict[SOUND_MODES[mode]] = mode
         
         # Setup the comms with the amp
-        pollingCmds = [AmpCmd(PDC_AMP, STATUS_REQ,     zone=zone), 
-                       AmpCmd(PDC_AMP, VOL_STATUS_REQ, zone=zone)]
+        volStatusCmd           = AmpCmd(PDC_AMP, VOL_STATUS_REQ, zone=zone)
+        pollingCmds            = [AmpCmd(PDC_AMP, STATUS_REQ,     zone=zone), 
+                                  volStatusCmd]
+        self.pwrOffInvalidCmds = [volStatusCmd]
         if zone == 0:
-            pollingCmds.append(AmpCmd(PDC_SOUND_ADAPTOR, SF_STATUS_REQ_CMD))
+            sfStatusCmd = AmpCmd(PDC_SOUND_ADAPTOR, SF_STATUS_REQ_CMD)
+            pollingCmds.append(sfStatusCmd)
+            self.pwrOffInvalidCmds.append(sfStatusCmd)
+        self.updateCmdMasking()
         ampCtrl.addListener(zone, pollingCmds, lambda x: self.statusListener(x))
         
+
+    def updateCmdMasking(self):
+        for cmd in self.pwrOffInvalidCmds:
+            cmd.okToSend = self.curState != STATE_OFF
+            
         
     def statusListener(self, cmd):
         unknown = False
@@ -146,6 +125,7 @@ class SonyDevice(MediaPlayerEntity):
                 self.curState  = STATE_ON if (cmd.value[2] & 1) != 0 else STATE_OFF
                 self.muted     = (cmd.value[2] & 2) != 0
                 self.curSource = self.sourceNameDict.get(cmd.value[0],"Unknown")
+                self.updateCmdMasking()
             elif cmd.cmd == VOL_STATUS_REQ:
                 _LOGGER.info("Amp vol status: " + str(cmd)) 
                 value          = cmd.value[1] << 8 | cmd.value[2]
@@ -198,6 +178,9 @@ class SonyDevice(MediaPlayerEntity):
         # No polling required
         pass
 
+    async def async_update(self):
+        pass
+
     @property
     def name(self):
         """Return the name of the device."""
@@ -242,6 +225,15 @@ class SonyDevice(MediaPlayerEntity):
         return features
 
     @property
+    def unique_id(self):
+        """Return the device unique id."""
+        return self.uniqueId
+
+    @property
+    def device_class(self):
+        return DEVICE_CLASS_SPEAKER
+
+    @property
     def device_state_attributes(self):
         """Return device specific state attributes."""
         attributes = {}
@@ -253,16 +245,14 @@ class SonyDevice(MediaPlayerEntity):
         #    attributes[ATTR_SOUND_MODE_RAW] = self._sound_mode_raw
         return attributes
 
-    # @property
-    # def device_info(self):
-        # """Return information about the device."""
-        # print("get device info called")
-        # return {
-            # "name": "aoeu",
-            # "identifiers": {(DOMAIN, self.name)},
-            # "model": self.name,
-            # "manufacturer": "Sony",
-        # }
+    @property
+    def device_info(self):
+        return {
+            "name": "Sony AV reciever",
+            "identifiers": {(DOMAIN, self.ampCtrl.port)},
+            "model": "STR-DA3500ES",
+            "manufacturer": "Sony",
+        }
 
     def select_source(self, source):
         selValue = self.sourceCmdDict[source]

@@ -39,15 +39,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     port = entry.data[CONF_FILENAME]
     ok = not port in DEVICES
     if ok:
-        # Create the device representation in the UI
-        device_registry = await dr.async_get_registry(hass)
-        device = device_registry.async_get_or_create(
-            config_entry_id = entry.entry_id,
-            identifiers     = {(DOMAIN, port)},
-            manufacturer    = "Sony",
-            name            = entry.title,
-            model           = "AV reciever",
-        )
         # Connect up the actual interface
         amp = AmpCtrl(False, port)
         # Register the device in our local dict
@@ -70,19 +61,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
         device.close()
         _LOGGER.debug("Removed device " + port)
     return ok
-
-
-async def async_get_amp(hass: HomeAssistant, device_id: str):
-    device_registry = await dr.async_get_registry(hass)
-    device = device_registry.async_get(device_id)
-    amp = None
-    if device:
-        for identifier in device.identifiers:
-            if identifier[0] == DOMAIN:
-                port = identifier[1]
-                amp  = DEVICES[port]
-                break
-    return amp
 
 
 def get_amp(port):

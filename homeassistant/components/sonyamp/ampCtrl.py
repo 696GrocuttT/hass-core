@@ -11,7 +11,7 @@ import logging
 _LOGGER = logging.getLogger(__name__)
 # General constants
 RETRY_LIMIT             = 5
-CMD_FAIL_RECOVERY_TIME  = 2
+CMD_FAIL_RECOVERY_TIME  = 0.5
 IDLE_DELAY              = 0.1
 # constands for the STR-DA3500ES in my setup
 NUM_ZONES               = 3
@@ -82,6 +82,7 @@ class AmpCmd:
         self.expResp    = expResp
         self.zone       = zone
         self.readResult = readResult
+        self.okToSend   = True
 
 
     @staticmethod
@@ -231,40 +232,34 @@ cmdAmpNightOn        = AmpCmd.AmpMemWriteCmd(NIGHT_MODE, [1])
 
 ################################################################################
 class AmpCtrl(threading.Thread):
-    def genCrc(self, data):
-        checkSum = len(data)
-        for x in data:
-            checkSum = checkSum + x
-        return (256 - checkSum) & 0xFF
-
-
     def rawSendCmd(self, cmd, forRead):
-        if not forRead:
-            _LOGGER.debug("Tx: " + str(cmd))
-        expectedResp = cmd.expResp        
-        cmdData      = cmd.data()
-        # keep trying to write out the command until we get the expected
-        # responce
-        for i in range(RETRY_LIMIT):
-            self.amp.write(cmdData)
-            # if there is an expected responce, check that we recieved it
-            ok = True
-            expectedRespLen = len(expectedResp)
-            if expectedRespLen != 0:
-                resp = self.amp.read(expectedRespLen)
-                ok   = bytes(expectedResp) == resp
-                if not ok:
-                    _LOGGER.error("invalid responce " + (":".join("{0:x}".format(c) for c in resp)))
-            # if everything is ok then get out of this retry loop now, if
-            # not then we sleep for a bit to let any other responce data
-            # come back and then flush it as it's not what we excepted and
-            # we don't know its length. This leaves the buffer clean for the
-            # next try.
-            if ok:
-                break
-            else:
-                time.sleep(CMD_FAIL_RECOVERY_TIME)
-                self.amp.flushInput()
+        if cmd.okToSend:
+            if not forRead:
+                _LOGGER.debug("Tx: " + str(cmd))
+            expectedResp = cmd.expResp        
+            cmdData      = cmd.data()
+            # keep trying to write out the command until we get the expected
+            # responce
+            for i in range(RETRY_LIMIT):
+                self.amp.write(cmdData)
+                # if there is an expected responce, check that we recieved it
+                ok = True
+                expectedRespLen = len(expectedResp)
+                if expectedRespLen != 0:
+                    resp = self.amp.read(expectedRespLen)
+                    ok   = bytes(expectedResp) == resp
+                    if not ok:
+                        _LOGGER.error("invalid responce " + (":".join("{0:x}".format(c) for c in resp)))
+                # if everything is ok then get out of this retry loop now, if
+                # not then we sleep for a bit to let any other responce data
+                # come back and then flush it as it's not what we excepted and
+                # we don't know its length. This leaves the buffer clean for the
+                # next try.
+                if ok:
+                    break
+                else:
+                    time.sleep(CMD_FAIL_RECOVERY_TIME)
+                    self.amp.flushInput()
 
 
     def recieveCmd(self, waitForCmd):
@@ -289,20 +284,22 @@ class AmpCtrl(threading.Thread):
 
 
     def getResponceToCmd(self, txCmd):
-        # keep trying to write out the command until we get the expected
-        # responce
         rxCmd = None
-        for i in range(RETRY_LIMIT):
-            # request the status from the amp, then read the responce
-            self.rawSendCmd(txCmd, True)
-            rxCmd = self.recieveCmd(True)
-            # if still ok break out of the retry look, otherwise wait for a bit,
-            # flush the buffer and try again.
-            if rxCmd != None:
-                break
-            else:
-                time.sleep(CMD_FAIL_RECOVERY_TIME)
-                self.amp.reset_input_buffer()
+        if txCmd.okToSend:
+            # keep trying to write out the command until we get the expected
+            # responce
+            for i in range(RETRY_LIMIT):
+                # request the status from the amp, then read the responce
+                self.rawSendCmd(txCmd, True)
+                rxCmd = self.recieveCmd(True)
+                # if still ok break out of the retry look, otherwise wait for a bit,
+                # flush the buffer and try again.
+                if rxCmd != None:
+                    break
+                else:
+                    _LOGGER.debug("            sleep " + str(txCmd))
+                    time.sleep(CMD_FAIL_RECOVERY_TIME)
+                    self.amp.reset_input_buffer()
         return rxCmd
    
 
@@ -321,7 +318,7 @@ class AmpCtrl(threading.Thread):
         self.port          = port
         self.txCmdQueue    = queue.Queue()
         self.stopRequested = False
-        self.amp           = serial.Serial(port=self.port, timeout=1, baudrate=9600)
+        self.amp           = serial.Serial(port=self.port, timeout=0.5, baudrate=9600)
         self.amp.reset_input_buffer()
         self.pollListeners = {}
         self.pollResponces = {}
@@ -330,6 +327,7 @@ class AmpCtrl(threading.Thread):
 
 
     def transmitCmd(self, cmd):
+        _LOGGER.debug("Tx queue: " + str(cmd))
         self.txCmdQueue.put(cmd)
  
 
