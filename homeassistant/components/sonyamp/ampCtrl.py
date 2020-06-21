@@ -16,6 +16,13 @@ IDLE_DELAY              = 0.1
 # constands for the STR-DA3500ES in my setup
 NUM_ZONES               = 3
 OK_RESP                 = 0xFD
+# virtual commands
+PDC_VIRTUAL             = -0x9
+PDC_VIRTUAL_RESPONCE    = -0x1
+SPK_A                   = 0x1
+SPK_B                   = 0x2
+SPK_A_STATUS            = 0x11
+SPK_B_STATUS            = 0x12
 # commands and values for the DSP functions, No zone is specified for these commands
 PDC_SOUND_ADAPTOR       = 0xA3
 PDC_SOUND_ADAPTOR_RESPONCE = 0xAB
@@ -147,19 +154,36 @@ class AmpCmd:
         return self.pdc in [PDC_AMP, PDC_AMP_RESPONCE] and self.cmd == MEM_WRITE
 
 
+    def isMem(self):
+        return self.isMemWrite() or self.isMemRead()
+
+
+    def isVirtual(self):
+        return self.pdc < 0
+
+
     def memAddrSpace(self):
-        assert(self.isMemWrite() or self.isMemRead())
+        assert(self.isMem())
         return self.value[0]
 
 
     def memAddr(self):
-        assert(self.isMemWrite() or self.isMemRead())
+        assert(self.isMem())
         return self.value[1] << 8 | self.value[2]
 
 
     def memData(self):
-        assert(self.isMemWrite() or self.isMemRead())
+        assert(self.isMem())
         return self.value[4:]
+
+
+    def isResponceTo(self, txCmd):
+        match = ((txCmd.pdc | 0x8) == self.pdc  and
+                  txCmd.zone       == self.zone and
+                  txCmd.cmd        == self.cmd)
+        if match and txCmd.isMem():
+            match = txCmd.memAddr() == self.memAddr()
+        return match
 
 
     def __eq__(self, other):
@@ -232,6 +256,25 @@ cmdAmpNightOn        = AmpCmd.AmpMemWriteCmd(NIGHT_MODE, [1])
 
 ################################################################################
 class AmpCtrl(threading.Thread):
+    def handleTxCmd(self, cmd, forRead):
+        if cmd.isVirtual():
+            realCmd = None
+            if cmd.cmd == SPK_A or cmd.cmd == SPK_B:
+                if cmd.value[0]:
+                    newVal = self.spkSelVal | cmd.cmd
+                else:
+                    newVal = self.spkSelVal & ~cmd.cmd
+                # +1 on new value is to convert back from bitmask to values the amp expects
+                realCmd = AmpCmd.AmpMemWriteCmd(SPEAKER_SEL_ADDR, [newVal+1])
+            else:
+                _LOGGER.error("invalid virtual cmd: " + str(cmd))
+            # If we have a translation from the cmd, send it now
+            if realCmd:
+                self.rawSendCmd(realCmd, forRead)
+        else:
+            self.rawSendCmd(cmd, forRead)
+
+
     def rawSendCmd(self, cmd, forRead):
         if cmd.okToSend:
             if not forRead:
@@ -290,7 +333,7 @@ class AmpCtrl(threading.Thread):
             # responce
             for i in range(RETRY_LIMIT):
                 # request the status from the amp, then read the responce
-                self.rawSendCmd(txCmd, True)
+                self.handleTxCmd(txCmd, True)
                 rxCmd = self.recieveCmd(True)
                 # if still ok break out of the retry look, otherwise wait for a bit,
                 # flush the buffer and try again.
@@ -303,24 +346,28 @@ class AmpCtrl(threading.Thread):
    
 
     def pollStatus(self):
-        for id in self.pollListeners:
-            for pollCmd in self.pollListeners[id][1]:                
+        with self.lock:
+            pollCmds = list(self.pollResponces)
+        for pollCmd in pollCmds:      
+            if not pollCmd.isVirtual():
                 rxCmd = self.getResponceToCmd(pollCmd)
-                if rxCmd != None and rxCmd != self.pollResponces[id].get(pollCmd):
-                    self.pollResponces[id][pollCmd] = rxCmd
+                if rxCmd != None and rxCmd != self.pollResponces.get(pollCmd):
+                    self.pollResponces[pollCmd] = rxCmd
                     self.distributeCmdToListeners(rxCmd)
                     
 
     def __init__(self, verbose, port, run=True):
         threading.Thread.__init__(self, name="ampCtrl")
+        self.lock          = threading.Lock()
         self.verbose       = verbose
         self.port          = port
         self.txCmdQueue    = queue.Queue()
         self.stopRequested = False
         self.amp           = serial.Serial(port=self.port, timeout=0.5, baudrate=9600)
         self.amp.reset_input_buffer()
-        self.pollListeners = {}
+        self.pollListeners = []
         self.pollResponces = {}
+        self.spkSelVal     = 0
         if run:
             self.start()
 
@@ -332,15 +379,16 @@ class AmpCtrl(threading.Thread):
 
     def distributeCmdToListeners(self, cmd):
         _LOGGER.debug("Rx: " + str(cmd)) 
-        if cmd.zone == None:
-            for zone in self.pollListeners:
-                self.pollListeners[zone][0](cmd)
-        else:
-            if cmd.zone in self.pollListeners:
-                self.pollListeners[cmd.zone][0](cmd)
-
+        with self.lock:
+            listeners = self.pollListeners.copy()
+        for listenerInfo in listeners:
+            for listenedCmd in listenerInfo[1]:
+                if cmd.isResponceTo(listenedCmd):
+                    listenerInfo[0](cmd)
+                
 
     def run(self):
+        self.setupVirtualCmdMonitor()
         while not self.stopRequested:
             activity = False
             # Transmit any waiting data
@@ -352,7 +400,7 @@ class AmpCtrl(threading.Thread):
                     if rxCmd != None:
                         self.distributeCmdToListeners(rxCmd)
                 else:
-                    self.rawSendCmd(cmd, False)
+                    self.handleTxCmd(cmd, False)
             # Check if we've recieved any commands
             while True:    
                 rxCmd = self.recieveCmd(False)
@@ -378,11 +426,39 @@ class AmpCtrl(threading.Thread):
 
 
     def addListener(self, zone, pollCommands, listener):
-        self.pollResponces[zone] = {}
-        for pollCommand in pollCommands:
-            self.pollResponces[zone][pollCommand] = None
-        self.pollListeners[zone] = (listener, pollCommands)
-        
+        with self.lock:
+            self.pollListeners.append((listener, pollCommands))
+            for pollCommand in pollCommands:
+                if not pollCommand in self.pollResponces:
+                    self.pollResponces[pollCommand] = None
+        # Ouput the current command state to the listeners so they get at least 
+        # an initial state
+        for pollCmd in self.pollResponces:
+            if pollCmd in pollCommands:
+                respCmd = self.pollResponces[pollCmd]
+                if respCmd:
+                    listener(respCmd)
+            
+
+    def setupVirtualCmdMonitor(self):
+        def listener(cmd):
+            if cmd.pdc == PDC_AMP_RESPONCE:
+                if cmd.cmd == STATUS_REQ:
+                    spkStatusReadCmd.okToSend = (cmd.value[2] & 1) != 0
+                if cmd.cmd == MEM_READ and cmd.memAddr() == SPEAKER_SEL_ADDR:                
+                    self.spkSelVal = cmd.memData()[0] - 1 # convert to bit mask form
+                    for spk in [SPK_A_STATUS, SPK_B_STATUS]:
+                        reqCmd  = AmpCmd(PDC_VIRTUAL, spk)                        
+                        respCmd = AmpCmd(PDC_VIRTUAL_RESPONCE, spk, [1 if self.spkSelVal & spk else 0])
+                        if respCmd != self.pollResponces.get(reqCmd):
+                            self.pollResponces[reqCmd] = respCmd
+                            self.distributeCmdToListeners(respCmd)
+                    
+        spkStatusReadCmd = AmpCmd.AmpMemReadCmd(SPEAKER_SEL_ADDR, 1)
+        pollCmds         = [AmpCmd(PDC_AMP, STATUS_REQ, zone=0), 
+                            spkStatusReadCmd]
+        self.addListener(0, pollCmds, listener)
+
 
 
 ################################################################################
@@ -434,7 +510,7 @@ if __name__ == "__main__":
     if args.pdc >= 0 and args.cmd >= 0:
         if args.val >= 0:
             cmd = AmpCmd(args.pdc, args.cmd, [args.val], [OK_RESP], args.zone)
-            amp.rawSendCmd(cmd, False)
+            amp.handleTxCmd(cmd, False)
         else:
             cmd  = AmpCmd(args.pdc, args.cmd, zone=args.zone)
             print(amp.getResponceToCmd(cmd))
@@ -443,7 +519,7 @@ if __name__ == "__main__":
     if args.addr >= 0:
         if args.val >= 0:
             cmd = AmpCmd.AmpMemWriteCmd(args.addr, [args.val])
-            amp.rawSendCmd(cmd, False)
+            amp.handleTxCmd(cmd, False)
         else:
             cmd = AmpCmd.AmpMemReadCmd(args.addr, 1)
             printMemData(amp.getResponceToCmd(cmd))

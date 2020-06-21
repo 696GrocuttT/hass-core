@@ -16,7 +16,7 @@ from homeassistant.const import (
     STATE_ON,
 )
 from .const   import DOMAIN, CONF_ZONES
-from .        import get_amp
+from .        import get_amp, get_device_info
 from .ampCtrl import *
 
 
@@ -47,15 +47,18 @@ SOUND_MODES = {
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     devices = []
-    amp     = get_amp(config_entry.data[CONF_FILENAME])
+    port    = config_entry.data[CONF_FILENAME]
+    amp     = get_amp(port)
     for zone in range(config_entry.data[CONF_ZONES]):    
-        devices.append(SonyDevice(amp, zone))
+        devInfo = get_device_info(port, zone)    
+        devices.append(SonyDevice(amp, devInfo, zone))
     async_add_entities(devices, True)
 
 
 
 class SonyDevice(MediaPlayerEntity):
-    def __init__(self, ampCtrl, zone):
+    def __init__(self, ampCtrl, devInfo, zone):
+        self.devInfo   = devInfo
         self.ampCtrl   = ampCtrl
         self.uniqueId  = ampCtrl.port + "_" + str(zone)
         self.zone      = zone
@@ -128,7 +131,6 @@ class SonyDevice(MediaPlayerEntity):
 
     @property
     def should_poll(self):
-        """No polling needed."""
         return False
 
 
@@ -143,13 +145,11 @@ class SonyDevice(MediaPlayerEntity):
 
     @property
     def name(self):
-        """Return the name of the device."""
         return "Sony STR-DA3500ES (zone %d)" % self.zone
 
 
     @property
     def state(self):
-        """Return the state of the device."""
         return self.curState
 
 
@@ -195,7 +195,6 @@ class SonyDevice(MediaPlayerEntity):
 
     @property
     def unique_id(self):
-        """Return the device unique id."""
         return self.uniqueId
 
 
@@ -206,12 +205,7 @@ class SonyDevice(MediaPlayerEntity):
 
     @property
     def device_info(self):
-        return {
-            "name":         self.name,
-            "identifiers":  {(DOMAIN, self.uniqueId)},
-            "model":        "STR-DA3500ES",
-            "manufacturer": "Sony",
-        }
+        return self.devInfo
 
 
     def select_source(self, source):

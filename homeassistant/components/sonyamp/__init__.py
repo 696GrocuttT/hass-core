@@ -74,3 +74,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
 
 def get_amp(port):
     return DEVICES[port]
+
+
+def get_device_info(port, zone):
+    return {
+        "name":         "Sony STR-DA3500ES (zone %d)" % zone,
+        "identifiers":  {(DOMAIN, port + "_" + str(zone))},
+        "model":        "STR-DA3500ES",
+        "manufacturer": "Sony",
+    }
