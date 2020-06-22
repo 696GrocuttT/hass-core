@@ -25,28 +25,24 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                NightModeSwitch(amp, devInfo, 0)]
     async_add_entities(devices, True)
     
+    
+
+class BaseAmpSwitch(SwitchEntity):
+    def __init__(self, ampCtrl, devInfo, zone):
+        self.ampCtrl     = ampCtrl
+        self.devInfo     = devInfo
+        self.zone        = zone
+        self.isOn        = False
+        self.isAvailable = False
+        self.ampCtrl.addListener([AmpCmd(PDC_VIRTUAL, AVAILABLE)], lambda x: self.availableListener(x))
 
 
-class SpeakerSwitch(SwitchEntity):
-    def __init__(self, ampCtrl, devInfo, zone, isSpkA):
-        self.ampCtrl   = ampCtrl
-        self.devInfo   = devInfo
-        self.uniqueId  = "speaker_" + ampCtrl.port + "_" + str(zone) + "_" + str(isSpkA)
-        self.zone      = zone
-        self.isSpkA    = isSpkA
-        self.isOn      = False
-        
-        # Setup the comms with the amp
-        pollingCmds = [AmpCmd(PDC_VIRTUAL, SPK_A_STATUS if isSpkA else SPK_B_STATUS)]
-        self.ampCtrl.addListener(zone, pollingCmds, lambda x: self.statusListener(x))
-
-
-    def statusListener(self, cmd):
+    def availableListener(self, cmd):
         unknown = False
         if cmd.pdc == PDC_VIRTUAL_RESPONCE:
-            if cmd.cmd == SPK_A_STATUS if self.isSpkA else SPK_B_STATUS:
-                _LOGGER.info("Spk status: " + str(cmd)) 
-                self.isOn = cmd.value[0] != 0
+            if cmd.cmd == AVAILABLE:
+                _LOGGER.info("Available: " + str(cmd)) 
+                self.isAvailable = cmd.value[0] != 0
             else:
                 unknown = True
         else:
@@ -72,11 +68,10 @@ class SpeakerSwitch(SwitchEntity):
     async def async_update(self):
         pass
 
-
+    
     @property
-    def name(self):
-        """Return the name of the device."""
-        return "Sony STR-DA3500ES (zone %d) speaker %s" % (self.zone, "A" if self.isSpkA else "B") 
+    def available(self):
+        return self.isAvailable
 
 
     @property
@@ -85,14 +80,54 @@ class SpeakerSwitch(SwitchEntity):
 
 
     @property
-    def unique_id(self):
-        """Return the device unique id."""
-        return self.uniqueId
+    def device_info(self):
+        return self.devInfo
+        
+
+    @property
+    def device_class(self):
+        return DEVICE_CLASS_SWITCH
+
+
+
+class SpeakerSwitch(BaseAmpSwitch):
+    def __init__(self, ampCtrl, devInfo, zone, isSpkA):
+        super(SpeakerSwitch, self).__init__(ampCtrl, devInfo, zone)
+        self.uniqueId = "speaker_" + ampCtrl.port + "_" + str(zone) + "_" + str(isSpkA)
+        self.isSpkA   = isSpkA
+        
+        # Setup the comms with the amp
+        pollingCmds = [AmpCmd(PDC_VIRTUAL, SPK_A_STATUS if isSpkA else SPK_B_STATUS)]
+        self.ampCtrl.addListener(pollingCmds, lambda x: self.statusListener(x))
+
+
+    def statusListener(self, cmd):
+        unknown = False
+        if cmd.pdc == PDC_VIRTUAL_RESPONCE:
+            if cmd.cmd == SPK_A_STATUS if self.isSpkA else SPK_B_STATUS:
+                _LOGGER.info("Spk status: " + str(cmd)) 
+                self.isOn = cmd.value[0] != 0
+            else:
+                unknown = True
+        else:
+            unknown = True
+        
+        if unknown:
+            _LOGGER.warn("Unknown command recieved: " + str(cmd)) 
+        if self.hass:
+            self.schedule_update_ha_state()
 
 
     @property
-    def device_info(self):
-        return self.devInfo
+    def name(self):
+        """Return the name of the device."""
+        return "Sony STR-DA3500ES (zone %d) speaker %s" % (self.zone, "A" if self.isSpkA else "B") 
+
+
+    @property
+    def unique_id(self):
+        """Return the device unique id."""
+        return self.uniqueId
 
         
     def turn_on(self):
@@ -103,27 +138,20 @@ class SpeakerSwitch(SwitchEntity):
         self.ampCtrl.transmitCmd(AmpCmd(PDC_VIRTUAL, SPK_A if self.isSpkA else SPK_B, [0]))
 
 
-    @property
-    def device_class(self):
-        return DEVICE_CLASS_SWITCH
 
 
-
-class NightModeSwitch(SwitchEntity):
+class NightModeSwitch(BaseAmpSwitch):
     def __init__(self, ampCtrl, devInfo, zone):
-        self.ampCtrl   = ampCtrl
-        self.devInfo   = devInfo
-        self.uniqueId  = "nightMode_" + ampCtrl.port + "_" + str(zone)
-        self.zone      = zone
-        self.pwrOn     = False
-        self.isOn      = False
+        super(NightModeSwitch, self).__init__(ampCtrl, devInfo, zone)
+        self.uniqueId = "nightMode_" + ampCtrl.port + "_" + str(zone)
+        self.pwrOn    = False
         
         # Setup the comms with the amp
         nightModeReadCmd       = AmpCmd.AmpMemReadCmd(NIGHT_MODE, 1)
         pollingCmds            = [AmpCmd(PDC_AMP, STATUS_REQ, zone=zone), nightModeReadCmd]
         self.pwrOffInvalidCmds = [nightModeReadCmd]
         self.updateCmdMasking()
-        self.ampCtrl.addListener(zone, pollingCmds, lambda x: self.statusListener(x))
+        self.ampCtrl.addListener(pollingCmds, lambda x: self.statusListener(x))
 
 
     def updateCmdMasking(self):
@@ -153,40 +181,15 @@ class NightModeSwitch(SwitchEntity):
 
 
     @property
-    def should_poll(self):
-        """No polling needed."""
-        return False
-
-
-    def update(self):
-        # No polling required
-        pass
-
-
-    async def async_update(self):
-        pass
-
-
-    @property
     def name(self):
         """Return the name of the device."""
         return "Sony STR-DA3500ES (zone %d) night mode" % (self.zone) 
 
 
     @property
-    def is_on(self):
-        return self.isOn
-
-
-    @property
     def unique_id(self):
         """Return the device unique id."""
         return self.uniqueId
-
-
-    @property
-    def device_info(self):
-        return self.devInfo
 
         
     def turn_on(self):
@@ -197,6 +200,3 @@ class NightModeSwitch(SwitchEntity):
         self.ampCtrl.transmitCmd(AmpCmd.AmpMemWriteCmd(NIGHT_MODE, [0]))
 
 
-    @property
-    def device_class(self):
-        return DEVICE_CLASS_SWITCH

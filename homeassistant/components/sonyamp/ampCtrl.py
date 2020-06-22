@@ -23,6 +23,7 @@ SPK_A                   = 0x1
 SPK_B                   = 0x2
 SPK_A_STATUS            = 0x11
 SPK_B_STATUS            = 0x12
+AVAILABLE               = 0x20
 # commands and values for the DSP functions, No zone is specified for these commands
 PDC_SOUND_ADAPTOR       = 0xA3
 PDC_SOUND_ADAPTOR_RESPONCE = 0xAB
@@ -99,15 +100,15 @@ class AmpCmd:
         cmd    = None
         if length > 3:
             pdc      = data[0]
-            cmd      = data[1]    
+            cmdCode  = data[1]    
             bodyData = data[:length-1]
             if AmpCmd.genCrc(bodyData) == data[length-1]:
                 # Now we have an array of numbers, we can interpret the command
                 zone = None
                 if pdc in AmpCmd.zoneCommands:
-                    if cmd in AmpCmd.zoneCommands[pdc]:
+                    if cmdCode in AmpCmd.zoneCommands[pdc]:
                         zone = bodyData.pop(2)
-                cmd = AmpCmd(pdc, cmd, bodyData[2:], zone=zone)
+                cmd = AmpCmd(pdc, cmdCode, bodyData[2:], zone=zone)
         return cmd
 
 
@@ -266,6 +267,10 @@ class AmpCtrl(threading.Thread):
                     newVal = self.spkSelVal & ~cmd.cmd
                 # +1 on new value is to convert back from bitmask to values the amp expects
                 realCmd = AmpCmd.AmpMemWriteCmd(SPEAKER_SEL_ADDR, [newVal+1])
+            elif cmd.cmd == AVAILABLE:
+                # Availabilyt checks are handle via looking at the responce to 
+                # other commands, so don't need an explicit TX
+                pass
             else:
                 _LOGGER.error("invalid virtual cmd: " + str(cmd))
             # If we have a translation from the cmd, send it now
@@ -351,23 +356,34 @@ class AmpCtrl(threading.Thread):
         for pollCmd in pollCmds:      
             if not pollCmd.isVirtual():
                 rxCmd = self.getResponceToCmd(pollCmd)
-                if rxCmd != None and rxCmd != self.pollResponces.get(pollCmd):
-                    self.pollResponces[pollCmd] = rxCmd
-                    self.distributeCmdToListeners(rxCmd)
+                if rxCmd != None: 
+                    if rxCmd != self.pollResponces.get(pollCmd):
+                        self.pollResponces[pollCmd] = rxCmd
+                        self.distributeCmdToListeners(rxCmd)
+                # We use the status commands to update the availability of the amp 
+                # as these should always get a responce if the amp is on
+                if pollCmd.pdc == PDC_AMP and pollCmd.cmd == STATUS_REQ:
+                    availResponceCmd = AmpCmd(PDC_VIRTUAL_RESPONCE, AVAILABLE, [0 if rxCmd == None else 1])
+                    if availResponceCmd != self.pollResponces.get(self.availCmd):
+                        self.pollResponces[self.availCmd] = availResponceCmd
+                        self.distributeCmdToListeners(availResponceCmd)
                     
 
     def __init__(self, verbose, port, run=True):
         threading.Thread.__init__(self, name="ampCtrl")
-        self.lock          = threading.Lock()
-        self.verbose       = verbose
-        self.port          = port
-        self.txCmdQueue    = queue.Queue()
-        self.stopRequested = False
-        self.amp           = serial.Serial(port=self.port, timeout=0.5, baudrate=9600)
+        self.lock             = threading.Lock()
+        self.verbose          = verbose
+        self.port             = port
+        self.txCmdQueue       = queue.Queue()
+        self.stopRequested    = False
+        self.amp              = serial.Serial(port=self.port, timeout=0.5, baudrate=9600)
         self.amp.reset_input_buffer()
-        self.pollListeners = []
-        self.pollResponces = {}
-        self.spkSelVal     = 0
+        self.availCmd         = AmpCmd(PDC_VIRTUAL, AVAILABLE)
+        self.pollListeners    = []
+        self.pollResponces    = {}
+        self.spkSelVal        = 0
+        self.prevRxCmd        = None
+        self.rxCmdRepeatCount = 0
         if run:
             self.start()
 
@@ -408,7 +424,18 @@ class AmpCtrl(threading.Thread):
                     break
                 else:
                     activity = True
+                    # We sometimes get a huge pile of repeated RX commands when the amp is actually off 
+                    # at the mains. Detect this and flush the buffer
+                    if self.prevRxCmd == rxCmd:
+                        self.rxCmdRepeatCount = self.rxCmdRepeatCount + 1
+                        if self.rxCmdRepeatCount > 10:
+                            _LOGGER.warning("Rx storm, resetting")
+                            self.rxCmdRepeatCount = 0
+                            self.amp.reset_output_buffer()
+                            self.amp.reset_input_buffer()
+                
                     self.distributeCmdToListeners(rxCmd)
+                    self.prevRxCmd = rxCmd
         
             self.pollStatus()
             if not activity:
@@ -425,7 +452,7 @@ class AmpCtrl(threading.Thread):
             self.amp.close()
 
 
-    def addListener(self, zone, pollCommands, listener):
+    def addListener(self, pollCommands, listener):
         with self.lock:
             self.pollListeners.append((listener, pollCommands))
             for pollCommand in pollCommands:
@@ -457,7 +484,7 @@ class AmpCtrl(threading.Thread):
         spkStatusReadCmd = AmpCmd.AmpMemReadCmd(SPEAKER_SEL_ADDR, 1)
         pollCmds         = [AmpCmd(PDC_AMP, STATUS_REQ, zone=0), 
                             spkStatusReadCmd]
-        self.addListener(0, pollCmds, listener)
+        self.addListener(pollCmds, listener)
 
 
 
@@ -496,8 +523,9 @@ if __name__ == "__main__":
     def rxHandler(cmd):
         print(cmd)
 
+    amp.addListener([AmpCmd(PDC_VIRTUAL, AVAILABLE)], rxHandler)
     for i in range(3):
-        amp.addListener(i, [AmpCmd(PDC_AMP, STATUS_REQ, zone=i)], rxHandler)
+        amp.addListener([AmpCmd(PDC_AMP, STATUS_REQ, zone=i)], rxHandler)
 
     def printMemData(cmd):
         # remove the header from the data

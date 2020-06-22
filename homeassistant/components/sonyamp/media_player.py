@@ -58,15 +58,16 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
 class SonyDevice(MediaPlayerEntity):
     def __init__(self, ampCtrl, devInfo, zone):
-        self.devInfo   = devInfo
-        self.ampCtrl   = ampCtrl
-        self.uniqueId  = ampCtrl.port + "_" + str(zone)
-        self.zone      = zone
-        self.curState  = STATE_OFF
-        self.mute      = False
-        self.rawVolume = -32768 # Smallest 16bit number
-        self.curSource = "Unknown"
-        self.soundMode = "Unknown"
+        self.devInfo     = devInfo
+        self.ampCtrl     = ampCtrl
+        self.uniqueId    = ampCtrl.port + "_" + str(zone)
+        self.zone        = zone
+        self.curState    = STATE_OFF
+        self.mute        = False
+        self.isAvailable = False
+        self.rawVolume   = -32768 # Smallest 16bit number
+        self.curSource   = "Unknown"
+        self.soundMode   = "Unknown"
         
         # Create a structures for sources / sound fields etc
         self.sourceCmdDict  = {}
@@ -82,7 +83,8 @@ class SonyDevice(MediaPlayerEntity):
         
         # Setup the comms with the amp
         volStatusCmd           = AmpCmd(PDC_AMP, VOL_STATUS_REQ, zone=zone)
-        pollingCmds            = [AmpCmd(PDC_AMP, STATUS_REQ, zone=zone),
+        pollingCmds            = [AmpCmd(PDC_VIRTUAL, AVAILABLE),
+                                  AmpCmd(PDC_AMP, STATUS_REQ, zone=zone),
                                   volStatusCmd]
         self.pwrOffInvalidCmds = [volStatusCmd]
         if zone == 0:
@@ -90,7 +92,7 @@ class SonyDevice(MediaPlayerEntity):
             pollingCmds.append(sfStatusCmd)
             self.pwrOffInvalidCmds.append(sfStatusCmd)
         self.updateCmdMasking()
-        ampCtrl.addListener(zone, pollingCmds, lambda x: self.statusListener(x))
+        ampCtrl.addListener(pollingCmds, lambda x: self.statusListener(x))
         
 
     def updateCmdMasking(self):
@@ -120,6 +122,12 @@ class SonyDevice(MediaPlayerEntity):
                 self.soundMode = self.soundModeNameDict.get(cmd.value[0],"Unknown")
             else:
                 unknown = True
+        elif cmd.pdc == PDC_VIRTUAL_RESPONCE:
+            if cmd.cmd == AVAILABLE:
+                _LOGGER.info("Available: " + str(cmd)) 
+                self.isAvailable = cmd.value[0] != 0
+            else:
+                unknown = True
         else:
             unknown = True
         
@@ -144,13 +152,18 @@ class SonyDevice(MediaPlayerEntity):
 
 
     @property
+    def available(self):
+        return self.isAvailable
+        
+        
+    @property
     def name(self):
         return "Sony STR-DA3500ES (zone %d)" % self.zone
 
 
     @property
     def state(self):
-        return self.curState
+        return self.curState if self.isAvailable else STATE_OFF
 
 
     @property
