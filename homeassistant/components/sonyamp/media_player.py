@@ -23,7 +23,8 @@ from .ampCtrl import *
 
 _LOGGER = logging.getLogger(__name__)
 SOURCE_DETAILS = {
-    "Tuner":                 (INPUT_SEL_CMD_TUNER,    7), 
+    "AM Tuner":              (INPUT_SEL_CMD_AM_TUNER, 7), 
+    "FM Tuner":              (INPUT_SEL_CMD_FM_TUNER, 7), 
     "CD":                    (INPUT_SEL_CMD_CD,       7), 
     "MD":                    (INPUT_SEL_CMD_MD,       7), 
     "TAPE":                  (INPUT_SEL_CMD_TAPE,     7), 
