@@ -1,7 +1,0 @@
-{
-  "domain": "irtoy",
-  "name": "IR Toy remote",
-  "documentation": "",
-  "requirements": ["pyserial==3.4"],
-  "codeowners": []
-}

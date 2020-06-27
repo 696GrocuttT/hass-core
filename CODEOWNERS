@@ -202,7 +202,6 @@ homeassistant/components/ipma/* @dgomes @abmantis
 homeassistant/components/ipp/* @ctalkington
 homeassistant/components/iqvia/* @bachya
 homeassistant/components/irish_rail_transport/* @ttroy50
-homeassistant/components/irtoy/* @696GrocuttT
 homeassistant/components/islamic_prayer_times/* @engrbm87
 homeassistant/components/isy994/* @bdraco @shbatm
 homeassistant/components/izone/* @Swamp-Ig
@@ -372,7 +371,6 @@ homeassistant/components/somfy/* @tetienne
 homeassistant/components/sonarr/* @ctalkington
 homeassistant/components/songpal/* @rytilahti @shenxn
 homeassistant/components/sonos/* @amelchio
-homeassistant/components/sonyamp/* @696GrocuttT
 homeassistant/components/spaceapi/* @fabaff
 homeassistant/components/speedtestdotnet/* @rohankapoorcom
 homeassistant/components/spider/* @peternijssen
