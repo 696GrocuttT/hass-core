@@ -91,6 +91,7 @@ class BraviaTVCoordinator(DataUpdateCoordinator[None]):
         self.duration: int | None = None
         self.content_uri: str | None = None
         self.program_media_type: str | None = None
+        self.extra_state_attributes: dict[str, any] = {}
         self.audio_output: str | None = None
         self.min_volume: int | None = None
         self.max_volume: int | None = None
@@ -166,6 +167,16 @@ class BraviaTVCoordinator(DataUpdateCoordinator[None]):
         else:
             self.media_title = None
 
+    def _extra_state_attributes(self) -> None:
+        """Refresh external inputs status."""
+        inputs_status = self.braviarc.get_ext_inputs_status()
+        attributes = {}
+        for input_status in inputs_status:
+            base_name = "input_"+input_status["title"].lower().replace(" ", "_")
+            attributes[base_name+"_connected"] = input_status["connection"]
+            attributes[base_name+"_status"] = input_status["status"]
+        self.extra_state_attributes = attributes
+
     def _update_tv_data(self) -> None:
         """Connect and update TV info."""
         power_status = self.braviarc.get_power_status()
@@ -186,6 +197,7 @@ class BraviaTVCoordinator(DataUpdateCoordinator[None]):
             self.is_on = True
             if self._refresh_volume() and self._refresh_channels():
                 self._refresh_playing_info()
+                self._extra_state_attributes()
                 return
 
         self.is_on = False

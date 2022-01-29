@@ -131,6 +131,11 @@ class BraviaTVMediaPlayer(CoordinatorEntity, MediaPlayerEntity):
         """Duration of current playing media in seconds."""
         return self.coordinator.duration
 
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Attributes of the media player."""
+        return self.coordinator.extra_state_attributes
+
     async def async_turn_on(self) -> None:
         """Turn the device on."""
         await self.coordinator.async_turn_on()
