@@ -20,7 +20,7 @@ from .const import CLIENTID_PREFIX, CONF_IGNORED_SOURCES, DOMAIN, NICKNAME
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: Final[list[Platform]] = [Platform.MEDIA_PLAYER, Platform.REMOTE]
+PLATFORMS: Final[list[Platform]] = [Platform.MEDIA_PLAYER, Platform.REMOTE, Platform.SELECT]
 SCAN_INTERVAL: Final = timedelta(seconds=10)
 
 
@@ -93,6 +93,7 @@ class BraviaTVCoordinator(DataUpdateCoordinator[None]):
         self.program_media_type: str | None = None
         self.extra_state_attributes: dict[str, any] = {}
         self.audio_output: str | None = None
+        self.sound_output: str | None = None
         self.min_volume: int | None = None
         self.max_volume: int | None = None
         self.volume_level: float | None = None
@@ -198,9 +199,11 @@ class BraviaTVCoordinator(DataUpdateCoordinator[None]):
             if self._refresh_volume() and self._refresh_channels():
                 self._refresh_playing_info()
                 self._extra_state_attributes()
+                self.sound_output = self.braviarc.get_sound_output()
                 return
 
         self.is_on = False
+        self.sound_output = None
 
     async def _async_update_data(self) -> None:
         """Fetch the latest data."""
@@ -282,6 +285,11 @@ class BraviaTVCoordinator(DataUpdateCoordinator[None]):
         """Send previous track command."""
         async with self.state_lock:
             await self.hass.async_add_executor_job(self.braviarc.media_previous_track)
+            await self.async_request_refresh()
+
+    async def async_set_sound_output(self, output) -> None:
+        async with self.state_lock:
+            await self.hass.async_add_executor_job(self.braviarc.set_sound_output, output)
             await self.async_request_refresh()
 
     async def async_select_source(self, source: str) -> None:
